@@ -3,6 +3,7 @@
  * Sve što korisnik upiše ostaje u uređaju; ništa se ne šalje na server.
  */
 import { BookletBuildInput, BookletContact, BookletDraft, BookletLang, BookletShoe, normalizeDraft } from './booklet';
+import { Flyer, normalizeFlyers } from './flyer';
 
 /** Stavka knjižice/letka: bilo što (proizvod, usluga, ponuda). U kodu knjižice zove se „shoe" iz povijesnih razloga; korisnik to nikad ne vidi. */
 export interface Item {
@@ -137,7 +138,7 @@ export function toBuildInput(draft: BookletDraft, items: Item[], settings: Setti
   return { draft, shoes: bookletShoes, photos, contact: toContact(settings) };
 }
 
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
 export interface Backup {
   app: 'booklet-studio';
   version: number;
@@ -145,12 +146,13 @@ export interface Backup {
   items: Item[];
   settings: Settings;
   draft: BookletDraft;
+  flyers: Flyer[];
 }
 
-export const makeBackup = (items: Item[], settings: Settings, draft: BookletDraft, now: Date = new Date()): Backup => ({ app: 'booklet-studio', version: BACKUP_VERSION, savedAt: now.toISOString(), items, settings, draft });
+export const makeBackup = (items: Item[], settings: Settings, draft: BookletDraft, flyers: Flyer[], now: Date = new Date()): Backup => ({ app: 'booklet-studio', version: BACKUP_VERSION, savedAt: now.toISOString(), items, settings, draft, flyers });
 
-/** Čita sigurnosnu kopiju (i staru, verzija 1, gdje su se stavke zvale „shoes"). Tuđa ili oštećena datoteka se ODBIJA s razlogom, ne uvozi se napola. */
-export function parseBackup(text: string): { ok: true; items: Item[]; settings: Settings; draft: BookletDraft } | { ok: false; reason: 'not-json' | 'not-ours' | 'newer' } {
+/** Čita sigurnosnu kopiju (i starije: verzija 1 je stavke zvala shoes, a verzije 1 i 2 nemaju letke). Tuđa ili oštećena datoteka se ODBIJA s razlogom, ne uvozi se napola. */
+export function parseBackup(text: string): { ok: true; items: Item[]; settings: Settings; draft: BookletDraft; flyers: Flyer[] } | { ok: false; reason: 'not-json' | 'not-ours' | 'newer' } {
   let o: any;
   try {
     o = JSON.parse(text);
@@ -161,7 +163,7 @@ export function parseBackup(text: string): { ok: true; items: Item[]; settings: 
   if (!o || o.app !== 'booklet-studio' || !list) return { ok: false, reason: 'not-ours' };
   if (typeof o.version === 'number' && o.version > BACKUP_VERSION) return { ok: false, reason: 'newer' };
   const settings = normalizeSettings(o.settings);
-  return { ok: true, items: normalizeItems(list), settings, draft: normalizeDraft(o.draft, settings.uiLang) };
+  return { ok: true, items: normalizeItems(list), settings, draft: normalizeDraft(o.draft, settings.uiLang), flyers: normalizeFlyers(o.flyers, settings.uiLang) };
 }
 
 /**

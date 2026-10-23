@@ -75,3 +75,43 @@ export function downloadBlob(name: string, blob: Blob): void {
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
+
+/**
+ * Ispis slike na cijeli list (A4 ili A5, bez margina) preko skrivenog okvira. Poziva se iz klika, a slika je već nacrtana, pa preglednik ispis ne blokira.
+ * Vraća false ako preglednik ispis ne može pokrenuti — sučelje tada kaže da sliku spremi i ispiše iz galerije.
+ */
+export function printPicture(blob: Blob, paper: 'A4' | 'A5'): boolean {
+  try {
+    const url = URL.createObjectURL(blob);
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><title>Print</title><style>@page{size:${paper};margin:0}html,body{margin:0;padding:0;background:#fff}img{display:block;width:100vw;height:100vh;object-fit:contain}</style></head><body><img src="${url}" alt=""></body></html>`;
+    frame.onload = () => {
+      const w = frame.contentWindow;
+      const img = frame.contentDocument?.querySelector('img');
+      const go = () => {
+        try {
+          w?.focus();
+          w?.print();
+        } finally {
+          window.setTimeout(() => {
+            frame.remove();
+            URL.revokeObjectURL(url);
+          }, 60_000);
+        }
+      };
+      if (img && !img.complete) img.onload = go;
+      else go();
+    };
+    document.body.appendChild(frame);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Jedna slika u izbornik dijeljenja (WhatsApp, LINE…). */
+export async function shareOnePicture(file: File, title: string, text: string): Promise<ShareResult> {
+  return sharePictures([file], title, text);
+}

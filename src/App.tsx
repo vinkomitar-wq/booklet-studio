@@ -18,13 +18,15 @@ import {
   type BookletLang,
 } from './lib/booklet';
 import { dbGet, dbSet } from './lib/db';
-import { baseName, downloadBlob, downloadFile, pictureFiles, prepare, shareFile, sharePictures, zipPictures } from './lib/export';
+import { baseName, downloadBlob, downloadFile, pictureFiles, prepare, printPicture, shareFile, sharePictures, zipPictures } from './lib/export';
 import { renderBookletImages } from './lib/render';
+import { renderFlyer } from './lib/flyerRender';
+import { FLYER_LAYOUTS, FLYER_SLOTS, Flyer, FlyerLayout, flyerIssues, flyerModel, newFlyer, normalizeFlyers, setLayout, toggleFlyerItem } from './lib/flyer';
 import { photoToDataUrl } from './lib/images';
 import { Settings, Item, boatTripPreset, defaultSettings, makeBackup, newId, normalizeSettings, normalizeItems, parseBackup, settingsIssues, toBuildInput, toContact } from './lib/studio';
 import { Key, tr } from './i18n';
 
-type Tab = 'items' | 'booklet' | 'settings';
+type Tab = 'items' | 'booklet' | 'flyers' | 'settings';
 type Msg = { text: string; ok: boolean };
 type TFn = (k: Key, v?: Record<string, string | number>) => string;
 const BIG_BYTES = 8 * 1024 * 1024;
@@ -46,7 +48,8 @@ export default function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [settings, setSettings] = useState<Settings>(() => defaultSettings(guessLang()));
   const [draft, setDraft] = useState<BookletDraft>(() => defaultDraft(guessLang()));
-  const [loaded, setLoaded] = useState<{ items: Item[]; settings: Settings; draft: BookletDraft } | null>(null);
+  const [flyers, setFlyers] = useState<Flyer[]>([]);
+  const [loaded, setLoaded] = useState<{ items: Item[]; settings: Settings; draft: BookletDraft; flyers: Flyer[] } | null>(null);
   const [fatal, setFatal] = useState('');
   const [saveErr, setSaveErr] = useState('');
   const lang = settings.uiLang;
@@ -56,15 +59,18 @@ export default function App() {
     let alive = true;
     (async () => {
       try {
-        const [s, st, d] = await Promise.all([dbGet('shoes'), dbGet('settings'), dbGet('draft')]);
+        // ključ 'shoes' ostaje: tako su već spremljeni podaci (stavke se nekad zvale cipele)
+        const [s, st, d, fl] = await Promise.all([dbGet('shoes'), dbGet('settings'), dbGet('draft'), dbGet('flyers')]);
         if (!alive) return;
         const ls = normalizeItems(s);
         const lset = normalizeSettings(st, guessLang());
         const ld = normalizeDraft(d, lset.uiLang);
+        const lf = normalizeFlyers(fl, lset.uiLang);
         setItems(ls);
         setSettings(lset);
         setDraft(ld);
-        setLoaded({ items: ls, settings: lset, draft: ld });
+        setFlyers(lf);
+        setLoaded({ items: ls, settings: lset, draft: ld, flyers: lf });
       } catch (e: any) {
         if (alive) setFatal(String(e?.message || e));
       }
@@ -78,6 +84,7 @@ export default function App() {
   useAutosave('shoes', items, loaded?.items ?? null, onSaveError);
   useAutosave('settings', settings, loaded?.settings ?? null, onSaveError);
   useAutosave('draft', draft, loaded?.draft ?? null, onSaveError);
+  useAutosave('flyers', flyers, loaded?.flyers ?? null, onSaveError);
 
   if (fatal)
     return (
@@ -94,9 +101,9 @@ export default function App() {
       <header className="top">
         <h1>{t('appName')}</h1>
         <nav className="tabs">
-          {(['items', 'booklet', 'settings'] as Tab[]).map((k) => (
+          {(['items', 'booklet', 'flyers', 'settings'] as Tab[]).map((k) => (
             <button key={k} type="button" className="tab" aria-pressed={tab === k} data-tab={k} onClick={() => setTab(k)}>
-              {t(k === 'items' ? 'tabItems' : k === 'booklet' ? 'tabBooklet' : 'tabSettings')}
+              {t(k === 'items' ? 'tabItems' : k === 'booklet' ? 'tabBooklet' : k === 'flyers' ? 'tabFlyers' : 'tabSettings')}
             </button>
           ))}
         </nav>
@@ -108,6 +115,7 @@ export default function App() {
       )}
       {tab === 'items' && <ItemsTab t={t} items={items} setItems={setItems} />}
       {tab === 'booklet' && <BookletTab t={t} items={items} settings={settings} draft={draft} setDraft={setDraft} />}
+      {tab === 'flyers' && <FlyersTab t={t} lang={lang} items={items} settings={settings} flyers={flyers} setFlyers={setFlyers} />}
       {tab === 'settings' && (
         <SettingsTab
           t={t}
@@ -115,12 +123,14 @@ export default function App() {
           setSettings={setSettings}
           items={items}
           draft={draft}
-          onRestore={(s, st, d) => {
+          flyers={flyers}
+          onRestore={(s, st, d, fl) => {
             setItems(s);
             setSettings(st);
             setDraft(d);
+            setFlyers(fl);
             // zapiši odmah: povratak ne smije ovisiti o stanci autospremanja
-            void Promise.all([dbSet('shoes', s), dbSet('settings', st), dbSet('draft', d)]).catch(onSaveError);
+            void Promise.all([dbSet('shoes', s), dbSet('settings', st), dbSet('draft', d), dbSet('flyers', fl)]).catch(onSaveError);
           }}
         />
       )}
@@ -692,8 +702,227 @@ function LastPageEditor({ t, lang, draft, update }: { t: TFn; lang: BookletLang;
   );
 }
 
+
+/* ───────────── Letci ───────────── */
+const fileSlug = (s: string) => (s.normalize('NFKD').replace(/[^\x00-\x7F]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'Flyer').slice(0, 40);
+
+function FlyersTab({ t, lang, items, settings, flyers, setFlyers }: { t: TFn; lang: BookletLang; items: Item[]; settings: Settings; flyers: Flyer[]; setFlyers: (f: (s: Flyer[]) => Flyer[]) => void }) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const editing = flyers.find((f) => f.id === editId) ?? null;
+  const itemName = (f: Flyer) => f.name || f.title || t('flyerUntitled');
+
+  const remove = (id: string) => {
+    if (confirm !== id) {
+      setConfirm(id);
+      window.setTimeout(() => setConfirm((c) => (c === id ? null : c)), 3000);
+      return;
+    }
+    setConfirm(null);
+    setFlyers((all) => all.filter((f) => f.id !== id));
+  };
+
+  if (editing) return <FlyerEditor t={t} items={items} settings={settings} flyer={editing} onBack={() => setEditId(null)} onChange={(f) => setFlyers((all) => all.map((x) => (x.id === f.id ? f : x)))} />;
+
+  return (
+    <>
+      <div className="card">
+        <h2>{t('tabFlyers')}</h2>
+        <p className="hint">{t('flyersHint')}</p>
+        <button
+          type="button"
+          className="btn primary"
+          data-new-flyer
+          onClick={() => {
+            const f = newFlyer(lang, new Set(flyers.map((x) => x.id)));
+            setFlyers((all) => [...all, f]);
+            setEditId(f.id);
+          }}
+        >
+          + {t('newFlyer')}
+        </button>
+      </div>
+      {flyers.length === 0 ? (
+        <p className="empty" data-no-flyers>{t('noFlyers')}</p>
+      ) : (
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
+          {flyers.map((f) => (
+            <div key={f.id} className="shoe" data-flyer={f.id}>
+              <div className="meta">
+                <b>{itemName(f)}</b>
+                <span>{t(f.layout === 'feature' ? 'layoutFeature' : f.layout === 'two' ? 'layoutTwo' : 'layoutGrid4')} · {f.paper}</span>
+              </div>
+              <div className="acts">
+                <button type="button" className="btn small" data-edit-flyer onClick={() => setEditId(f.id)}>{t('edit')}</button>
+                <button type="button" className="btn small" data-copy-flyer onClick={() => setFlyers((all) => [...all, { ...f, id: newFlyer(lang, new Set(all.map((x) => x.id))).id, name: `${itemName(f)} (2)` }])}>{t('duplicate')}</button>
+                <button type="button" className={`btn small ${confirm === f.id ? 'danger-armed' : ''}`} data-remove-flyer onClick={() => remove(f.id)}>{confirm === f.id ? t('removeSure') : t('remove')}</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function FlyerEditor({ t, items, settings, flyer, onBack, onChange }: { t: TFn; items: Item[]; settings: Settings; flyer: Flyer; onBack: () => void; onChange: (f: Flyer) => void }) {
+  const [msg, setMsg] = useState<Msg | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [rendering, setRendering] = useState(false);
+  const contact = toContact(settings);
+  const model = useMemo(() => flyerModel(flyer, items, contact), [flyer, items, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+  const issues = flyerIssues(flyer, items);
+  const slots = FLYER_SLOTS[flyer.layout];
+  const set = (patch: Partial<Flyer>) => onChange({ ...flyer, ...patch });
+  const say = (text: string, ok = true) => setMsg({ text, ok });
+
+  // sličica uživo: crta se tek nakon stanke u tipkanju
+  useEffect(() => {
+    let alive = true;
+    let url: string | null = null;
+    setRendering(true);
+    const id = window.setTimeout(() => {
+      renderFlyer(model, 0.5)
+        .then((b) => {
+          if (!alive) return;
+          url = URL.createObjectURL(b);
+          setPreviewUrl((old) => {
+            if (old) URL.revokeObjectURL(old);
+            return url;
+          });
+          setRendering(false);
+        })
+        .catch((e) => {
+          if (!alive) return;
+          setRendering(false);
+          say(t('flyerRenderFail', { detail: String(e?.message || e).slice(0, 120) }), false);
+        });
+    }, 350);
+    return () => {
+      alive = false;
+      window.clearTimeout(id);
+    };
+  }, [model]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setPreviewUrl((old) => (old ? (URL.revokeObjectURL(old), null) : null)), []);
+
+  const full = async (scale: number) => renderFlyer(model, scale);
+  const run = async (kind: string, fn: () => Promise<void>) => {
+    setBusy(kind);
+    setMsg(null);
+    try {
+      await fn();
+    } catch (e: any) {
+      console.error('Flyer action failed:', e);
+      say(t('flyerRenderFail', { detail: String(e?.message || e).slice(0, 120) }), false);
+    }
+    setBusy(null);
+  };
+  const slug = fileSlug(flyer.title || flyer.name);
+  const hasContent = issues.indexOf('no-items') < 0;
+
+  return (
+    <>
+      <div className="card" data-flyer-editor>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button type="button" className="btn small" data-flyer-back onClick={onBack}>← {t('flyerBack')}</button>
+        </div>
+        <label className="f"><span>{t('flyerName')}</span><input type="text" value={flyer.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} /></label>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <div>
+            <span className="hint" style={{ margin: 0, display: 'block' }}>{t('layoutLabel')}</span>
+            <div className="seg">
+              {FLYER_LAYOUTS.map((l: FlyerLayout) => (
+                <button key={l} type="button" data-layout={l} aria-pressed={flyer.layout === l} onClick={() => {
+                  const next = setLayout(flyer, l);
+                  const cut = flyer.itemIds.length - next.itemIds.length;
+                  onChange(next);
+                  if (cut > 0) say(t('layoutCut', { n: cut }), false);
+                }}>{t(l === 'feature' ? 'layoutFeature' : l === 'two' ? 'layoutTwo' : 'layoutGrid4')}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="hint" style={{ margin: 0, display: 'block' }}>{t('paper')}</span>
+            <div className="seg">
+              {(['A4', 'A5'] as const).map((p) => (
+                <button key={p} type="button" data-paper={p} aria-pressed={flyer.paper === p} onClick={() => set({ paper: p })}>{p}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="hint" style={{ margin: 0, display: 'block' }}>{t('bkLang')}</span>
+            <div className="seg">
+              {(['th', 'en'] as const).map((l) => (
+                <button key={l} type="button" data-flyer-lang={l} aria-pressed={flyer.lang === l} onClick={() => set({ lang: l })}>{l === 'th' ? 'ไทย' : 'English'}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <label className="f"><span>{t('flyerTitle')}</span><input type="text" data-flyer-title value={flyer.title} maxLength={120} onChange={(e) => set({ title: e.target.value })} /></label>
+        <label className="f"><span>{t('bkSub')}</span><input type="text" value={flyer.subtitle} maxLength={160} onChange={(e) => set({ subtitle: e.target.value })} /></label>
+        <label className="f"><span>{t('flyerBody')}</span><textarea style={{ minHeight: 70 }} value={flyer.body} maxLength={1200} onChange={(e) => set({ body: e.target.value })} /></label>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <label className="row" style={{ cursor: 'pointer', fontWeight: 700 }}><input type="checkbox" checked={flyer.showPrices} onChange={(e) => set({ showPrices: e.target.checked })} /> {t('bkShowPrices')}</label>
+          <label className="row" style={{ cursor: 'pointer', fontWeight: 700 }}><input type="checkbox" data-flyer-qr checked={flyer.showQr} onChange={(e) => set({ showQr: e.target.checked })} /> {t('flyerShowQr')}</label>
+        </div>
+        <span className="hint" style={{ margin: 0, display: 'block' }}>{t('flyerItems', { n: flyer.itemIds.length, max: slots })}</span>
+        {items.length === 0 && <p className="warn">⚠ {t('noItems')}</p>}
+        <div className="pick" style={{ marginTop: 6 }}>
+          {items.map((it) => {
+            const on = flyer.itemIds.includes(it.id);
+            return (
+              <label key={it.id} className={on ? 'on' : ''} data-flyer-pick={it.id}>
+                <input type="checkbox" checked={on} onChange={() => {
+                  const r = toggleFlyerItem(flyer, it.id);
+                  if (r.full) return say(t('flyerFull', { max: slots }), false);
+                  setMsg(null);
+                  onChange(r.flyer);
+                }} />
+                {it.images[0] ? <img src={it.images[0]} alt="" /> : <span className="ph0" />}
+                <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{it.title || '—'}</span>
+              </label>
+            );
+          })}
+        </div>
+        {issues.includes('no-items') && <p className="warn" data-flyer-warn>⚠ {t('flyerNoItems')}</p>}
+        {issues.includes('missing-items') && <p className="warn">⚠ {t('flyerMissing')}</p>}
+      </div>
+
+      <div className="card">
+        <div style={{ textAlign: 'center', background: '#eee', padding: 8 }}>
+          {previewUrl ? <img src={previewUrl} alt="" data-flyer-preview style={{ maxWidth: '100%', width: 420, background: '#fff', opacity: rendering ? 0.5 : 1 }} /> : <p className="hint">{t('building')}</p>}
+        </div>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button type="button" className="btn primary" data-flyer-send disabled={busy !== null || !hasContent} onClick={() => run('send', async () => {
+            const file = new File([await full(1)], `${slug}.jpg`, { type: 'image/jpeg' });
+            const r = await sharePictures([file], flyer.title || flyer.name, '');
+            if (r === 'shared') say(t('shared'));
+            else if (r === 'unsupported') {
+              downloadBlob(file.name, file);
+              say(t('flyerSavedInstead'), false);
+            }
+          })}>{busy === 'send' ? t('building') : t('flyerSend')}</button>
+          <button type="button" className="btn" data-flyer-print disabled={busy !== null || !hasContent} onClick={() => run('print', async () => {
+            const blob = await full(2);
+            if (!printPicture(blob, flyer.paper)) {
+              downloadBlob(`${slug}.jpg`, blob);
+              say(t('flyerPrintFail'), false);
+            } else say(t('flyerPrinting', { paper: flyer.paper }));
+          })}>{busy === 'print' ? t('building') : t('flyerPrint', { paper: flyer.paper })}</button>
+          <button type="button" className="btn" data-flyer-save disabled={busy !== null || !hasContent} onClick={() => run('save', async () => {
+            downloadBlob(`${slug}.jpg`, await full(2));
+            say(t('flyerSaved'));
+          })}>{busy === 'save' ? t('building') : t('flyerSave')}</button>
+        </div>
+        {msg && <p data-msg role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
+      </div>
+    </>
+  );
+}
+
 /* ───────────── Postavke ───────────── */
-function SettingsTab({ t, settings, setSettings, items, draft, onRestore }: { t: TFn; settings: Settings; setSettings: (f: (s: Settings) => Settings) => void; items: Item[]; draft: BookletDraft; onRestore: (s: Item[], st: Settings, d: BookletDraft) => void }) {
+function SettingsTab({ t, settings, setSettings, items, draft, flyers, onRestore }: { t: TFn; settings: Settings; setSettings: (f: (s: Settings) => Settings) => void; items: Item[]; draft: BookletDraft; flyers: Flyer[]; onRestore: (s: Item[], st: Settings, d: BookletDraft, fl: Flyer[]) => void }) {
   const [msg, setMsg] = useState<Msg | null>(null);
   const [pending, setPending] = useState<File | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -701,7 +930,7 @@ function SettingsTab({ t, settings, setSettings, items, draft, onRestore }: { t:
   const bad = new Set(settingsIssues(settings).map((i) => i.field));
 
   const saveBackup = () => {
-    const b = makeBackup(items, settings, draft);
+    const b = makeBackup(items, settings, draft, flyers);
     downloadFile(`booklet-studio-backup-${b.savedAt.slice(0, 10)}.json`, JSON.stringify(b), 'application/json');
     setMsg({ text: t('backupSaved'), ok: true });
   };
@@ -710,7 +939,7 @@ function SettingsTab({ t, settings, setSettings, items, draft, onRestore }: { t:
     const r = parseBackup(await f.text());
     setPending(null);
     if (!r.ok) return setMsg({ text: t(r.reason === 'not-json' ? 'backupBadJson' : r.reason === 'newer' ? 'backupNewer' : 'backupNotOurs'), ok: false });
-    onRestore(r.items, r.settings, r.draft);
+    onRestore(r.items, r.settings, r.draft, r.flyers);
     setMsg({ text: t('backupLoaded', { n: r.items.length }), ok: true });
   };
 

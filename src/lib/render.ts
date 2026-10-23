@@ -10,20 +10,20 @@ import { Measure, wrapText } from './wrap';
 export const PAGE_W = 1080;
 export const PAGE_H = 1350;
 const M = 72;
-const INK = '#1A1A1A';
-const PAPER = '#FAF9F6';
-const MUTED = '#6b7280';
-const PLACE = '#EFEDE8';
-const SANS = '"Inter","Noto Sans Thai","Sukhumvit Set",Tahoma,system-ui,-apple-system,"Segoe UI",sans-serif';
-const SERIF = '"Playfair Display","Noto Serif Thai",Georgia,serif';
+export const INK = '#1A1A1A';
+export const PAPER = '#FAF9F6';
+export const MUTED = '#6b7280';
+export const PLACE = '#EFEDE8';
+export const SANS = '"Inter","Noto Sans Thai","Sukhumvit Set",Tahoma,system-ui,-apple-system,"Segoe UI",sans-serif';
+export const SERIF = '"Playfair Display","Noto Serif Thai",Georgia,serif';
 
-type Ctx = CanvasRenderingContext2D;
-const font = (px: number, weight = 400, serif = false) => `${weight} ${Math.round(px)}px ${serif ? SERIF : SANS}`;
+export type Ctx = CanvasRenderingContext2D;
+export const font = (px: number, weight = 400, serif = false) => `${weight} ${Math.round(px)}px ${serif ? SERIF : SANS}`;
 const measureOf = (ctx: Ctx): Measure => (s) => ctx.measureText(s).width;
-const wrap = (ctx: Ctx, text: string, w: number, maxLines?: number) => wrapText(measureOf(ctx), text, w, { maxLines });
+export const wrap = (ctx: Ctx, text: string, w: number, maxLines?: number) => wrapText(measureOf(ctx), text, w, { maxLines });
 
 const imgCache = new Map<string, Promise<HTMLImageElement | null>>();
-function loadImg(src: string): Promise<HTMLImageElement | null> {
+export function loadImg(src: string): Promise<HTMLImageElement | null> {
   if (!src) return Promise.resolve(null);
   let p = imgCache.get(src);
   if (!p) {
@@ -39,7 +39,7 @@ function loadImg(src: string): Promise<HTMLImageElement | null> {
   return p;
 }
 
-function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
+export function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -50,7 +50,7 @@ function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: numb
 }
 
 /** Slika ispunjava okvir (obrezuje) ili staje cijela u okvir (contain). */
-function drawFit(ctx: Ctx, im: HTMLImageElement, x: number, y: number, w: number, h: number, mode: 'cover' | 'contain') {
+export function drawFit(ctx: Ctx, im: HTMLImageElement, x: number, y: number, w: number, h: number, mode: 'cover' | 'contain') {
   const k = mode === 'cover' ? Math.max(w / im.width, h / im.height) : Math.min(w / im.width, h / im.height);
   const dw = im.width * k;
   const dh = im.height * k;
@@ -77,7 +77,7 @@ function newPage(): { canvas: HTMLCanvasElement; ctx: Ctx } {
   return { canvas, ctx };
 }
 
-function drawLines(ctx: Ctx, lines: string[], x: number, y: number, lh: number, align: CanvasTextAlign = 'left'): number {
+export function drawLines(ctx: Ctx, lines: string[], x: number, y: number, lh: number, align: CanvasTextAlign = 'left'): number {
   ctx.textAlign = align;
   for (const l of lines) {
     ctx.fillText(l, x, y);
