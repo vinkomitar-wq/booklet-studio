@@ -24,7 +24,7 @@ import { renderFlyer } from './lib/flyerRender';
 import { FLYER_LAYOUTS, FLYER_SLOTS, Flyer, FlyerLayout, flyerIssues, flyerModel, newFlyer, normalizeFlyers, setLayout, toggleFlyerItem } from './lib/flyer';
 import { photoToDataUrl } from './lib/images';
 import { runShopImport } from './lib/shopImport';
-import { isFleetItem, isShopItem, runBoatImport } from './lib/boatImport';
+import { isFleetItem, isShopItem, runBoatImport, runBoatPhotoImport } from './lib/boatImport';
 import { externalizePhotos, inlinePhotos, newPhotoId, photoSrc, usedPhotos, type StudioState } from './lib/sync';
 import { useCloudSync, type CloudInfo } from './useCloudSync';
 import { Settings, Item, boatTripPreset, defaultSettings, makeBackup, newId, normalizeSettings, normalizeItems, parseBackup, settingsIssues, toBuildInput, toContact } from './lib/studio';
@@ -389,6 +389,48 @@ function BookletTab({ t, items, settings, draft, setDraft, photos, setPhotos }: 
 
   const addShoesPage = () => update((d) => ({ ...d, pages: [...d.pages, { id: newPageId(d.pages), type: 'shoes', heading: '', shoeIds: [], note: '' }] }));
   const addPhotosPage = () => update((d) => ({ ...d, pages: [...d.pages, { id: newPageId(d.pages), type: 'photos', heading: '', items: [], note: '' }] }));
+  // Sve fotografije svakog broda s thailandboattours.com: jedna stranica „Photos" po brodu (slike se spremaju zasebno, pa ih može biti mnogo)
+  const importBoatPhotos = async () => {
+    setBusy('boatphotos');
+    setMsg(null);
+    try {
+      const cloud = await import('./lib/cloud');
+      const grab = async (url: string) => {
+        const r = await fetch(url, { mode: 'cors' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const b = await r.blob();
+        return photoToDataUrl(new File([b], 'boat.jpg', { type: b.type.startsWith('image/') ? b.type : 'image/jpeg' }));
+      };
+      const headings = draft.pages.filter((p) => p.type === 'photos').map((p) => p.heading);
+      const r = await runBoatPhotoImport(headings, cloud.fetchFleet, grab, cloud.fetchFleetLibrary);
+      if (r.pages.length > 0) {
+        const added: Record<string, string> = {};
+        const made = r.pages.map((pg) => ({
+          name: pg.name,
+          refs: pg.images.map((u) => {
+            const id = newPhotoId({ ...photos, ...added });
+            added[id] = u;
+            return id;
+          }),
+        }));
+        setPhotos((cur) => ({ ...cur, ...added }));
+        update((d) => {
+          const pages = [...d.pages];
+          for (const m of made) pages.push({ id: newPageId(pages), type: 'photos', heading: m.name, items: m.refs.map((ref) => ({ ref, caption: '' })), note: '' });
+          return { ...d, pages };
+        });
+      }
+      const n = r.pages.reduce((a, p) => a + p.images.length, 0);
+      const parts = [t('boatPhotosAdded', { pages: r.pages.length, n })];
+      if (r.skipped.length > 0) parts.push(t('boatPhotosSkipped', { names: r.skipped.slice(0, 6).join(', ') }));
+      if (r.blocked > 0) parts.push(t('boatPhotosBlocked', { n: r.blocked }));
+      if (r.noImage.length > 0) parts.push(t('boatNoImage', { names: r.noImage.slice(0, 6).join(', ') }));
+      say(parts.join(' · '), r.blocked === 0 && r.noImage.length === 0 && r.pages.length > 0);
+    } catch (e: any) {
+      say(t('shopFail', { detail: String(e?.code || e?.message || e).slice(0, 120) }), false);
+    }
+    setBusy(null);
+  };
   const addTextPage = () => update((d) => ({ ...d, pages: [...d.pages, { id: newPageId(d.pages), type: 'text', heading: '', body: '' }] }));
   const addAllShoes = () => {
     const used = new Set(draft.pages.flatMap((p) => (p.type === 'shoes' ? p.shoeIds : [])));
@@ -552,6 +594,7 @@ function BookletTab({ t, items, settings, draft, setDraft, photos, setPhotos }: 
           <button type="button" className="btn" data-add-items-page onClick={addShoesPage}>+ {t('addItemsPage')}</button>
           <button type="button" className="btn" onClick={addPhotosPage}>+ {t('addPhotosPage')}</button>
           <button type="button" className="btn" onClick={addTextPage}>+ {t('addTextPage')}</button>
+          <button type="button" className="btn" data-boat-photos disabled={busy !== null} onClick={() => void importBoatPhotos()}>{busy === 'boatphotos' ? t('building') : `+ ${t('boatPhotos')}`}</button>
         </div>
         {draft.pages.length > 0 && (
           <div className="outline" data-outline style={{ marginBottom: 12 }}>

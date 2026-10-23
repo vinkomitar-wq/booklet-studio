@@ -170,3 +170,81 @@ export async function runBoatImport(
   }
   return res;
 }
+
+export interface BoatPhotoPage {
+  boatId: string;
+  name: string;
+  /** `data:image/…` adrese, redom; najviše PHOTOS_PER_BOAT. */
+  images: string[];
+}
+
+export interface BoatPhotoResult {
+  pages: BoatPhotoPage[];
+  /** Brodovi koji već imaju stranicu s fotografijama (po naslovu) — ne diraju se. */
+  skipped: string[];
+  /** Brodovi bez ijedne dohvatljive slike (imena). */
+  noImage: string[];
+  /** Ukupno slika koje se nisu dale dohvatiti (blokirano / nema mreže). */
+  blocked: number;
+}
+
+/** Koliko se fotografija po brodu uzima (stranica „Photos" drži do 60; ovdje ostavljamo prostora i za ručno dodane). */
+export const PHOTOS_PER_BOAT = 30;
+
+/**
+ * SVE fotografije svakog broda, za stranice „Photos" u knjižici (jedna stranica po brodu). Za razliku od stavke (najviše 3), slike stranice se spremaju zasebno,
+ * pa ih može biti mnogo. Brod čija stranica (isti naslov) već postoji se preskače, da ponovni pritisak ne udvostruči stranice.
+ */
+export async function runBoatPhotoImport(
+  existingHeadings: string[],
+  fetchFleet: () => Promise<unknown>,
+  fetchImage: (url: string) => Promise<string>,
+  fetchLibrary: () => Promise<unknown> = async () => undefined,
+  concurrency = 3,
+): Promise<BoatPhotoResult> {
+  const fleetRaw = await fetchFleet();
+  let libRaw: unknown;
+  try {
+    libRaw = await fetchLibrary();
+  } catch {
+    libRaw = undefined;
+  }
+  const boats = parseFleet(fleetRaw, libRaw);
+  const have = new Set(existingHeadings.map((h) => h.trim().toLowerCase()).filter(Boolean));
+  const res: BoatPhotoResult = { pages: [], skipped: [], noImage: [], blocked: 0 };
+  const todo = boats.filter((b) => {
+    const label = b.name || b.id;
+    if (have.has(label.trim().toLowerCase())) {
+      res.skipped.push(label);
+      return false;
+    }
+    return true;
+  });
+  const got = new Map<string, { imgs: string[]; blocked: number }>();
+  let next = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const b = todo[next++];
+      const imgs: string[] = [];
+      let blocked = 0;
+      for (const url of b.images.map(resolveBoatImage).filter(Boolean).slice(0, PHOTOS_PER_BOAT)) {
+        try {
+          const d = await fetchImage(url);
+          if (d.startsWith('data:image/')) imgs.push(d);
+          else blocked++;
+        } catch {
+          blocked++;
+        }
+      }
+      got.set(b.id, { imgs, blocked });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+  for (const b of todo) {
+    const g = got.get(b.id);
+    res.blocked += g?.blocked ?? 0;
+    if (!g || g.imgs.length === 0) res.noImage.push(b.name || b.id);
+    else res.pages.push({ boatId: b.id, name: b.name || b.id, images: g.imgs });
+  }
+  return res;
+}

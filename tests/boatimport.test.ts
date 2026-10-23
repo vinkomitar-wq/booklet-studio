@@ -1,6 +1,6 @@
 // Uvoz brodova: čitanje flote, adrese slika, opis, bez imena operatora, djelomične slike, ponovni uvoz (lažni dohvat, bez mreže).
 import assert from 'node:assert/strict';
-import { boatDesc, isFleetItem, isShopItem, libraryPhotos, parseFleet, resolveBoatImage, runBoatImport } from '../src/lib/boatImport';
+import { boatDesc, isFleetItem, isShopItem, libraryPhotos, parseFleet, resolveBoatImage, runBoatImport, runBoatPhotoImport, PHOTOS_PER_BOAT } from '../src/lib/boatImport';
 import type { Item } from '../src/lib/studio';
 
 let failed = 0;
@@ -155,6 +155,49 @@ const nid = (taken: Set<string>) => {
 
   await t('runBoatImport: greška čitanja flote se baca', async () => {
     await assert.rejects(() => runBoatImport([], async () => { throw new Error('offline'); }, fetchImage, nid), /offline/);
+  });
+
+  await t('runBoatPhotoImport: jedna stranica po brodu, SVE slike (i iz knjižnice), redom; ime operatora nigdje', async () => {
+    const lib = [
+      { category: 'fleet', vesselId: 'the-best', url: '/fleet/the-best-saloon.jpg' },
+      { category: 'fleet', vesselId: 'the-best', url: '/fleet/s.jpg' },
+    ];
+    const okAll = async (u: string) => (u.startsWith('data:image/') ? u : IMG(u.split('/').pop() || 'x'));
+    const r = await runBoatPhotoImport([], async () => [fleet[0], fleet[2]], okAll, async () => lib);
+    assert.deepEqual(r.pages.map((p) => p.name), ['The Best', 'MV Nona']);
+    assert.equal(r.pages[0].images.length, 4, 'hero + bay + saloon + s');
+    assert.equal(r.pages[1].images.length, 1);
+    assert.ok(!JSON.stringify(r).match(/SECRET|Secret/));
+    assert.equal(r.blocked, 0);
+  });
+
+  await t('runBoatPhotoImport: brod koji već ima stranicu (isti naslov) se preskače; ponovni pritisak ne udvostručuje', async () => {
+    const okAll = async (u: string) => (u.startsWith('data:image/') ? u : IMG('x'));
+    const first = await runBoatPhotoImport([], async () => [fleet[0]], okAll);
+    assert.equal(first.pages.length, 1);
+    let calls = 0;
+    const again = await runBoatPhotoImport(['the best '], async () => [fleet[0]], async (u) => (calls++, okAll(u)));
+    assert.equal(again.pages.length, 0);
+    assert.deepEqual(again.skipped, ['The Best']);
+    assert.equal(calls, 0, 'preskočen brod se ne dohvaća');
+  });
+
+  await t('runBoatPhotoImport: blokirane slike se broje, brod bez ijedne dohvatljive javlja se imenom, ostale slike prolaze', async () => {
+    const boats = [
+      { id: 'mix', name: 'Mix', images: ['/fleet/the-best-hero.jpg', 'https://blocked.example/a.jpg'] },
+      { id: 'none', name: 'None', images: ['https://blocked.example/b.jpg'] },
+    ];
+    const r = await runBoatPhotoImport([], async () => boats, fetchImage);
+    assert.equal(r.pages.length, 1);
+    assert.equal(r.pages[0].images.length, 1);
+    assert.equal(r.blocked, 2);
+    assert.deepEqual(r.noImage, ['None']);
+  });
+
+  await t('runBoatPhotoImport: najviše PHOTOS_PER_BOAT slika po brodu', async () => {
+    const many = { id: 'many', name: 'Many', images: Array.from({ length: PHOTOS_PER_BOAT + 10 }, (_, i) => `/fleet/p${i}.jpg`) };
+    const r = await runBoatPhotoImport([], async () => [many], async (u) => IMG(u));
+    assert.equal(r.pages[0].images.length, PHOTOS_PER_BOAT);
   });
 
   if (failed) {
