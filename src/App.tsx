@@ -232,7 +232,8 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
       if (r.updated > 0) parts.push(t('boatUpdated', { n: r.updated }));
       if (r.partial > 0) parts.push(t('boatPartial', { n: r.partial }));
       if (r.noImage.length > 0) parts.push(t('boatNoImage', { names: r.noImage.slice(0, 6).join(', ') }));
-      setMsg({ text: r.total === 0 ? t('boatEmpty') : parts.join(' · '), ok: r.total > 0 && r.noImage.length === 0 && r.partial === 0 });
+      if (r.thin.length > 0) parts.push(t('boatThin', { list: r.thin.slice(0, 6).map((b) => `${b.name} (${b.found}${b.blocked > 0 ? `, ${b.blocked} blocked` : ''})`).join(', ') }));
+      setMsg({ text: r.total === 0 ? t('boatEmpty') : parts.join(' · '), ok: r.total > 0 && r.noImage.length === 0 && r.partial === 0 && r.thin.length === 0 });
     } catch (e: any) {
       setMsg({ text: t('shopFail', { detail: String(e?.code || e?.message || e).slice(0, 120) }), ok: false });
     }
