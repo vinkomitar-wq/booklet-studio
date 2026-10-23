@@ -211,6 +211,8 @@ const str = (v: unknown, max = 2000): string => (typeof v === 'string' ? v.slice
 /** Dopuštene veličine stranice cipela: svaka stane na ekran bez skrolanja (2×1, 2×2, 3×2, 3×3). */
 export const SHOES_PER_PAGE = [2, 4, 6, 9] as const;
 export const DEFAULT_PER_PAGE = 6;
+/** Stranice s vlastitim fotografijama uvijek po 6 (2×3 / 3×2): isto kao zadane stranice stavki, svaka stane na ekran. */
+export const PHOTOS_PER_PAGE = 6;
 /** Samo dopuštene vrijednosti; sve ostalo (pokvaren zapis iz baze, string, 0, 5) ostaje prazno pa vrijedi zadano. */
 export function cleanPerPage(v: unknown): number | undefined {
   return typeof v === 'number' && (SHOES_PER_PAGE as readonly number[]).includes(v) ? v : undefined;
@@ -247,7 +249,8 @@ export function bookletOutline(draft: BookletDraft, usable: { shoe: (id: string)
       const chunks = shoeChunks(p.shoeIds.filter(usable.shoe), perPageOf(p));
       chunks.forEach((ids, i) => add({ kind: 'shoes', pageId: p.id, part: i + 1, parts: chunks.length, shoeIds: ids }));
     } else if (p.type === 'photos') {
-      if (p.items.some((it) => (usable.photo ? usable.photo(it.ref) : true))) add({ kind: 'photos', pageId: p.id, part: 1, parts: 1, shoeIds: [] });
+      const chunks = shoeChunks(p.items.filter((it) => (usable.photo ? usable.photo(it.ref) : true)), PHOTOS_PER_PAGE);
+      chunks.forEach((_, i) => add({ kind: 'photos', pageId: p.id, part: i + 1, parts: chunks.length, shoeIds: [] }));
     } else if (p.heading.trim() || p.body.trim()) add({ kind: 'text', pageId: p.id, part: 1, parts: 1, shoeIds: [] });
   }
   add({ kind: 'order', pageId: null, part: 1, parts: 1, shoeIds: [] });
@@ -613,9 +616,15 @@ export function bookletPages(input: BookletBuildInput): string[] {
         out.push(`<section class="pk-page pk-fit">${head}<div class="pk-grid pk-n${per}">${cards.join('')}</div>${note}</section>`);
       });
     } else if (p.type === 'photos') {
-      const cards = p.items.filter((it) => safeSrc(photos[it.ref] ?? '')).map((it) => cardHtml([photos[it.ref]], it.caption, ''));
-      if (cards.length === 0) continue;
-      out.push(`<section class="pk-page">${heading(p.heading)}<div class="pk-grid">${cards.join('')}</div>${p.note.trim() ? `<div class="pk-note">${paragraphsHtml(p.note)}</div>` : ''}</section>`);
+      const ok = p.items.filter((it) => safeSrc(photos[it.ref] ?? ''));
+      const chunks = shoeChunks(ok, PHOTOS_PER_PAGE);
+      chunks.forEach((chunk, i) => {
+        const cards = chunk.map((it) => cardHtml([photos[it.ref]], it.caption, ''));
+        const part = chunks.length > 1 ? `<span class="pk-part">${i + 1} / ${chunks.length}</span>` : '';
+        const head = p.heading.trim() ? `<h2 class="pk-h">${escapeHtml(p.heading)}${part}</h2><hr class="pk-rule">` : part ? `<h2 class="pk-h">${part}</h2><hr class="pk-rule">` : '';
+        const note = i === chunks.length - 1 && p.note.trim() ? `<div class="pk-note">${paragraphsHtml(p.note)}</div>` : '';
+        out.push(`<section class="pk-page pk-fit">${head}<div class="pk-grid pk-n${PHOTOS_PER_PAGE}">${cards.join('')}</div>${note}</section>`);
+      });
     } else {
       if (!p.heading.trim() && !p.body.trim()) continue;
       out.push(`<section class="pk-page pk-text">${heading(p.heading)}${paragraphsHtml(p.body)}</section>`);
