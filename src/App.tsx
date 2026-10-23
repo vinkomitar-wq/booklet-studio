@@ -23,6 +23,7 @@ import { renderBookletImages } from './lib/render';
 import { renderFlyer } from './lib/flyerRender';
 import { FLYER_LAYOUTS, FLYER_SLOTS, Flyer, FlyerLayout, flyerIssues, flyerModel, newFlyer, normalizeFlyers, setLayout, toggleFlyerItem } from './lib/flyer';
 import { photoToDataUrl } from './lib/images';
+import { runShopImport } from './lib/shopImport';
 import { externalizePhotos, inlinePhotos, newPhotoId, photoSrc, usedPhotos, type StudioState } from './lib/sync';
 import { useCloudSync, type CloudInfo } from './useCloudSync';
 import { Settings, Item, boatTripPreset, defaultSettings, makeBackup, newId, normalizeSettings, normalizeItems, parseBackup, settingsIssues, toBuildInput, toContact } from './lib/studio';
@@ -187,6 +188,25 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
     }
     setBusy(false);
   };
+  // Uvoz iz web-dućana: samo čita; uvezeno i uređeno se ne dira (ista cipela se ne uvozi dvaput)
+  const importShop = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const cloud = await import('./lib/cloud');
+      const r = await runShopImport(items, cloud.fetchShopCollection, cloud.fetchShopImage, (taken) => newId(taken));
+      if (r.added.length > 0) setItems((s) => [...s, ...r.added.filter((a) => !s.some((x) => x.shopId && x.shopId === a.shopId))]);
+      const parts = [t('shopAdded', { n: r.added.length })];
+      if (r.already > 0) parts.push(t('shopAlready', { n: r.already }));
+      if (r.hidden > 0) parts.push(t('shopHidden', { n: r.hidden }));
+      if (r.noImage > 0) parts.push(t('shopNoImage', { n: r.noImage }));
+      if (r.failed > 0) parts.push(t('shopFailed', { n: r.failed }));
+      setMsg({ text: r.total === 0 ? t('shopEmpty') : parts.join(' · '), ok: r.total > 0 && r.failed === 0 });
+    } catch (e: any) {
+      setMsg({ text: t('shopFail', { detail: String(e?.code || e?.message || e).slice(0, 120) }), ok: false });
+    }
+    setBusy(false);
+  };
   const remove = (id: string) => {
     if (confirm !== id) {
       setConfirm(id);
@@ -208,6 +228,9 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
           </button>
           <button type="button" className="btn" data-add-many disabled={busy} onClick={() => many.current?.click()}>
             + {t('addMany')}
+          </button>
+          <button type="button" className="btn" data-import-shop disabled={busy} onClick={() => void importShop()}>
+            {busy ? t('building') : t('shopImport')}
           </button>
           <input ref={many} type="file" accept="image/*" multiple hidden data-many-input onChange={(e) => { void addMany(e.target.files); e.target.value = ''; }} />
         </div>
