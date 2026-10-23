@@ -18,7 +18,8 @@ import {
   type BookletLang,
 } from './lib/booklet';
 import { dbGet, dbSet } from './lib/db';
-import { downloadFile, prepare, shareFile } from './lib/export';
+import { baseName, downloadBlob, downloadFile, pictureFiles, prepare, shareFile, sharePictures, zipPictures } from './lib/export';
+import { renderBookletImages } from './lib/render';
 import { photoToDataUrl } from './lib/images';
 import { Settings, Item, boatTripPreset, defaultSettings, makeBackup, newId, normalizeSettings, normalizeItems, parseBackup, settingsIssues, toBuildInput, toContact } from './lib/studio';
 import { Key, tr } from './i18n';
@@ -276,6 +277,7 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
   const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [pics, setPics] = useState<{ urls: string[]; files: File[] } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const say = (text: string, ok = true) => setMsg({ text, ok });
   const shoeById = useMemo(() => new Map(items.map((s) => [s.id, s] as const)), [items]);
@@ -360,6 +362,38 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
       return null;
     } finally {
       setBusy(null);
+    }
+  };
+
+  /** Slike stranica (ono što gost dobije); greška se prikazuje, ne guta. */
+  const makePictures = async (kind: string) => {
+    setBusy(kind);
+    setMsg(null);
+    try {
+      const blobs = await renderBookletImages(toBuildInput(draft, items, settings));
+      const files = pictureFiles(blobs, draft.title);
+      const mb = (files.reduce((n, f) => n + f.size, 0) / 1024 / 1024).toFixed(1);
+      setNotes([]);
+      say(t('picsReady', { n: files.length, size: mb }));
+      return files;
+    } catch (e: any) {
+      console.error('Picture render failed:', e);
+      say(t('buildFail', { detail: String(e?.message || e).slice(0, 120) }), false);
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  };
+  const closePics = () => {
+    pics?.urls.forEach((u) => URL.revokeObjectURL(u));
+    setPics(null);
+  };
+  const sendPics = async (files: File[]) => {
+    const r = await sharePictures(files, draft.title, shareMessage(draft, contact));
+    if (r === 'shared') say(t('shared'));
+    else if (r === 'unsupported') {
+      downloadBlob(`${baseName(draft.title)}.zip`, await zipPictures(files));
+      say(t('shareUnsupportedPics'), false);
     }
   };
 
@@ -512,26 +546,9 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
           <p key={n} className="warn">⚠ {issueText(i)}</p>
         ))}
         <div className="row">
-          <button type="button" className="btn" data-preview disabled={busy !== null} onClick={() => { const b = build('preview'); if (b) setPreviewHtml(b.html); }}>{busy === 'preview' ? t('building') : t('preview')}</button>
-          <button type="button" className="btn" data-download disabled={busy !== null} onClick={() => { const b = build('download'); if (b) downloadFile(b.fileName, b.html); }}>{busy === 'download' ? t('building') : t('download')}</button>
-          <button
-            type="button"
-            className="btn primary"
-            data-share
-            disabled={busy !== null}
-            onClick={async () => {
-              const b = build('share');
-              if (!b) return;
-              const r = await shareFile(b, draft.title, shareMessage(draft, contact));
-              if (r === 'shared') say(t('shared'));
-              else if (r === 'unsupported') {
-                downloadFile(b.fileName, b.html);
-                say(t('shareUnsupported'), false);
-              }
-            }}
-          >
-            {busy === 'share' ? t('building') : t('share')}
-          </button>
+          <button type="button" className="btn primary" data-send-pics disabled={busy !== null} onClick={async () => { const f = await makePictures('send'); if (f) await sendPics(f); }}>{busy === 'send' ? t('building') : t('sendPics')}</button>
+          <button type="button" className="btn" data-preview-pics disabled={busy !== null} onClick={async () => { const f = await makePictures('preview'); if (f) setPics({ files: f, urls: f.map((x) => URL.createObjectURL(x)) }); }}>{busy === 'preview' ? t('building') : t('preview')}</button>
+          <button type="button" className="btn" data-zip disabled={busy !== null} onClick={async () => { const f = await makePictures('zip'); if (f) downloadBlob(`${baseName(draft.title)}.zip`, await zipPictures(f)); }}>{busy === 'zip' ? t('building') : t('savePics')}</button>
           <button
             type="button"
             className="btn"
@@ -548,11 +565,51 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
             {t('copyMsg')}
           </button>
         </div>
+        <details style={{ marginTop: 12 }}>
+          <summary className="hint" style={{ cursor: 'pointer' }}>{t('moreFormats')}</summary>
+          <p className="hint">{t('htmlHint')}</p>
+          <div className="row">
+            <button type="button" className="btn small" data-preview disabled={busy !== null} onClick={() => { const b = build('preview-html'); if (b) setPreviewHtml(b.html); }}>{t('previewHtml')}</button>
+            <button type="button" className="btn small" data-download disabled={busy !== null} onClick={() => { const b = build('download'); if (b) downloadFile(b.fileName, b.html); }}>{t('download')}</button>
+            <button
+              type="button"
+              className="btn small"
+              data-share
+              disabled={busy !== null}
+              onClick={async () => {
+                const b = build('share');
+                if (!b) return;
+                const r = await shareFile(b, draft.title, shareMessage(draft, contact));
+                if (r === 'shared') say(t('shared'));
+                else if (r === 'unsupported') {
+                  downloadFile(b.fileName, b.html);
+                  say(t('shareUnsupported'), false);
+                }
+              }}
+            >
+              {t('shareHtml')}
+            </button>
+          </div>
+        </details>
         {msg && <p data-msg role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok' : 'err'} style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</p>}
         {notes.map((n, i) => (
           <p key={i} className="warn">⚠ {n}</p>
         ))}
       </div>
+      {pics && (
+        <div className="modal" data-pics-modal>
+          <div className="bar" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn primary" onClick={() => void sendPics(pics.files)}>{t('sendPics')}</button>
+            <button type="button" className="btn" onClick={async () => downloadBlob(`${baseName(draft.title)}.zip`, await zipPictures(pics.files))}>{t('savePics')}</button>
+            <button type="button" className="btn" data-pics-close onClick={closePics}>× {t('close')}</button>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', background: '#222', padding: 8 }}>
+            {pics.urls.map((u, i) => (
+              <img key={u} src={u} alt={`${i + 1}`} data-pic style={{ display: 'block', width: '100%', maxWidth: 520, margin: '0 auto 12px', background: '#fff' }} />
+            ))}
+          </div>
+        </div>
+      )}
       {previewHtml !== null && (
         <div className="modal" data-preview-modal>
           <div className="bar">
