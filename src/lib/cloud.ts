@@ -64,3 +64,9 @@ export async function fetchFleet(): Promise<unknown> {
   const snap = await getDoc(doc(paycDb, 'fleet', 'vessels'));
   return snap.exists() ? snap.data().list : undefined;
 }
+
+/** Knjižnica slika flote (`fleet/photos_library`, polje `photos`): ostale fotografije svakog broda. Bez dokumenta vraća undefined. */
+export async function fetchFleetLibrary(): Promise<unknown> {
+  const snap = await getDoc(doc(paycDb, 'fleet', 'photos_library'));
+  return snap.exists() ? snap.data().photos : undefined;
+}

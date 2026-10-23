@@ -224,10 +224,12 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
         const b = await r.blob();
         return photoToDataUrl(new File([b], 'boat.jpg', { type: b.type.startsWith('image/') ? b.type : 'image/jpeg' }));
       };
-      const r = await runBoatImport(items, cloud.fetchFleet, grab, (taken) => newId(taken));
-      if (r.added.length > 0) setItems((s) => [...s, ...r.added.filter((a) => !s.some((x) => x.shopId && x.shopId === a.shopId))]);
-      const parts = [t('shopAdded', { n: r.added.length })];
+      const r = await runBoatImport(items, cloud.fetchFleet, grab, (taken) => newId(taken), cloud.fetchFleetLibrary);
+      // nove stavke se dodaju, a dopunjene (isti id) zamjenjuju postojeće
+      if (r.added.length > 0) setItems((s) => [...s.map((x) => r.added.find((a) => a.id === x.id) ?? x), ...r.added.filter((a) => !s.some((x) => x.id === a.id) && !s.some((x) => x.shopId && x.shopId === a.shopId))]);
+      const parts = [t('shopAdded', { n: r.added.length - r.updated })];
       if (r.already > 0) parts.push(t('shopAlready', { n: r.already }));
+      if (r.updated > 0) parts.push(t('boatUpdated', { n: r.updated }));
       if (r.partial > 0) parts.push(t('boatPartial', { n: r.partial }));
       if (r.noImage.length > 0) parts.push(t('boatNoImage', { names: r.noImage.slice(0, 6).join(', ') }));
       setMsg({ text: r.total === 0 ? t('boatEmpty') : parts.join(' · '), ok: r.total > 0 && r.noImage.length === 0 && r.partial === 0 });
