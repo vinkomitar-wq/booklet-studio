@@ -1,6 +1,7 @@
 // Podaci aplikacije Booklet Studio: telefon bez pogađanja zemlje, ulaz za knjižicu, sigurnosna kopija (tuđa datoteka se odbija).
 import assert from 'node:assert/strict';
 import { defaultDraft } from '../src/lib/booklet';
+import { normalizeFlyers } from '../src/lib/flyer';
 import { boatTripPreset, defaultSettings, makeBackup, normalizeItems, normalizeSettings, parseBackup, settingsIssues, toBuildInput, toContact, toE164, type Item } from '../src/lib/studio';
 
 let failed = 0;
@@ -65,13 +66,15 @@ t('sigurnosna kopija: krug (spremi → učitaj) čuva sve; tuđa/oštećena/novi
   const shoes: Item[] = [{ id: 'a', title: 'A', price: '฿1', desc: 'opis', images: [IMG] }];
   const settings = normalizeSettings({ businessName: 'Studio', uiLang: 'th' });
   const draft = { ...defaultDraft('th'), title: 'Moja' };
-  const text = JSON.stringify(makeBackup(shoes, settings, draft, new Date('2026-10-23T10:00:00Z')));
+  const flyers = normalizeFlyers([{ id: 'f1', name: 'A', layout: 'two', paper: 'A5', lang: 'th', title: 'T', itemIds: ['a'] }]);
+  const text = JSON.stringify(makeBackup(shoes, settings, draft, flyers, new Date('2026-10-23T10:00:00Z')));
   const r = parseBackup(text);
   assert.ok(r.ok);
   if (r.ok) {
     assert.deepEqual(r.items, shoes);
     assert.equal(r.settings.businessName, 'Studio');
     assert.equal(r.draft.title, 'Moja');
+    assert.deepEqual(r.flyers, flyers, 'letci putuju u kopiji');
   }
   assert.deepEqual(parseBackup('{not json'), { ok: false, reason: 'not-json' });
   assert.deepEqual(parseBackup('{"app":"other","items":[]}'), { ok: false, reason: 'not-ours' });
@@ -84,6 +87,12 @@ t('stara sigurnosna kopija (verzija 1, „shoes") se i dalje čita; stavke dobiv
   const r = parseBackup(old);
   assert.ok(r.ok);
   if (r.ok) assert.deepEqual(r.items.map((i) => [i.id, i.title, i.desc]), [['a', 'A', '']]);
+});
+t('kopija iz verzije 2 (bez letaka) se čita, letci su prazni', () => {
+  const v2 = JSON.stringify({ app: 'booklet-studio', version: 2, items: [{ id: 'a', title: 'A', images: [IMG] }], settings: {}, draft: {} });
+  const r = parseBackup(v2);
+  assert.ok(r.ok);
+  if (r.ok) assert.deepEqual(r.flyers, []);
 });
 t('toBuildInput prenosi opis stavke', () => {
   const items: Item[] = [{ id: 'a', title: 'A', price: '', desc: 'Handmade', images: [IMG] }];

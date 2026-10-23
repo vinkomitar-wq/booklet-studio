@@ -3,7 +3,7 @@
 Odgovaraj **hrvatski, koncizno**. Vlasnik (Vinko) nije tehnički: objašnjavaj jasno, bez žargona.
 
 ## Što je ovo
-- Samostalna aplikacija (React + Vite, PWA) za izradu **knjižica** (i kasnije letaka) cipela koje Parry slika. NIJE vezana uz trgovinu `parry-shoe-shop`.
+- Samostalna aplikacija (React + Vite, PWA) za izradu **knjižica** i **letaka** (prvi korisnik: Parry, slikane cipele; ali je opća). NIJE vezana uz trgovinu `parry-shoe-shop`.
 - Podaci su **samo u uređaju** (IndexedDB); sigurnosna kopija je JSON datoteka. Ništa se ne šalje na server. U repo NIKAD ne ide ništa osobno (telefon, slike, cijene).
 - Objava: GitHub Pages iz `main` (`.github/workflows/pages.yml`). `base: './'` u `vite.config.ts` mora ostati — radi na bilo kojoj putanji.
 

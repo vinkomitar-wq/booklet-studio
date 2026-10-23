@@ -1,6 +1,6 @@
 # Booklet Studio
 
-Standalone web app for making **booklets** (and later flyers) of painted shoes. Works on phone, tablet and PC, installs as an app, and works offline.
+Standalone web app for making **booklets** and **flyers** of painted shoes. Works on phone, tablet and PC, installs as an app, and works offline.
 
 - Add shoes (photos, name, price) — everything is stored **on the device** (IndexedDB), nothing is sent to a server.
 - Build a booklet: pages of shoes (2 / 4 / 6 / 9 per page, each page fits the screen), own photo pages, text pages, "how to order" last page.
