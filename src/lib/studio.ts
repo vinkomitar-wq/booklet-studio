@@ -15,6 +15,8 @@ export interface Item {
   /** Kratak opis (neobavezno). */
   desc: string;
   images: string[];
+  /** Šifra cipele u web-dućanu iz koje je stavka uvezena (nema = unesena ručno). Služi da se ista cipela ne uveze dvaput. */
+  shopId?: string;
 }
 
 export interface Settings {
@@ -74,6 +76,7 @@ export function normalizeItems(raw: unknown): Item[] {
       price: str(o.price, 60),
       desc: str(o.desc, 300),
       images: (Array.isArray(o.images) ? o.images : []).filter((x): x is string => typeof x === 'string' && x.startsWith('data:image/')).slice(0, 3),
+      ...(str(o.shopId, 60) ? { shopId: str(o.shopId, 60) } : {}),
     });
     if (out.length >= 500) break;
   }

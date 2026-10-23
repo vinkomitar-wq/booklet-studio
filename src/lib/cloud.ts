@@ -5,7 +5,7 @@
  */
 import { initializeApp } from 'firebase/app';
 import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import { doc, getDoc, initializeFirestore } from 'firebase/firestore';
 import { makeRemote } from './firestoreRemote';
 
 // Javna web-konfiguracija (ista kao u dućanu; nije tajna — pristup brane pravila baze).
@@ -40,3 +40,18 @@ export async function signIn(): Promise<void> {
 export const signOut = (): Promise<void> => fbSignOut(auth);
 
 export const remote = makeRemote(db);
+
+/** Popis cipela iz web-dućana (jedno čitanje; dokument je javno čitljiv). */
+export async function fetchShopCollection(): Promise<unknown> {
+  const snap = await getDoc(doc(db, 'app_data', 'main_app_state'));
+  return snap.exists() ? snap.data().pck_collection : undefined;
+}
+
+/** `img:<id>` → data: adresa slike iz dućana (jedno čitanje po slici). Nepostojeća slika vraća ''; greška mreže se baca. */
+export async function fetchShopImage(ref: string): Promise<string> {
+  const id = ref.replace(/^img:/, '');
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return '';
+  const snap = await getDoc(doc(db, 'shop_images', id));
+  const data = snap.exists() ? snap.data().data : '';
+  return typeof data === 'string' ? data : '';
+}
