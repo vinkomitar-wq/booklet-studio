@@ -8,9 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "tsx tests/booklet.test.ts && tsx tests/studio.test.ts"
+    "test": "tsx tests/booklet.test.ts && tsx tests/studio.test.ts && tsx tests/render.test.ts"
   },
   "dependencies": {
+    "qrcode-generator": "^2.0.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1"
   },
