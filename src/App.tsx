@@ -23,6 +23,8 @@ import { renderBookletImages } from './lib/render';
 import { renderFlyer } from './lib/flyerRender';
 import { FLYER_LAYOUTS, FLYER_SLOTS, Flyer, FlyerLayout, flyerIssues, flyerModel, newFlyer, normalizeFlyers, setLayout, toggleFlyerItem } from './lib/flyer';
 import { photoToDataUrl } from './lib/images';
+import { externalizePhotos, inlinePhotos, newPhotoId, photoSrc, usedPhotos, type StudioState } from './lib/sync';
+import { useCloudSync, type CloudInfo } from './useCloudSync';
 import { Settings, Item, boatTripPreset, defaultSettings, makeBackup, newId, normalizeSettings, normalizeItems, parseBackup, settingsIssues, toBuildInput, toContact } from './lib/studio';
 import { Key, tr } from './i18n';
 
@@ -49,7 +51,8 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(() => defaultSettings(guessLang()));
   const [draft, setDraft] = useState<BookletDraft>(() => defaultDraft(guessLang()));
   const [flyers, setFlyers] = useState<Flyer[]>([]);
-  const [loaded, setLoaded] = useState<{ items: Item[]; settings: Settings; draft: BookletDraft; flyers: Flyer[] } | null>(null);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [loaded, setLoaded] = useState<{ items: Item[]; settings: Settings; draft: BookletDraft; flyers: Flyer[]; photos: Record<string, string> } | null>(null);
   const [fatal, setFatal] = useState('');
   const [saveErr, setSaveErr] = useState('');
   const lang = settings.uiLang;
@@ -60,17 +63,21 @@ export default function App() {
     (async () => {
       try {
         // ključ 'shoes' ostaje: tako su već spremljeni podaci (stavke se nekad zvale cipele)
-        const [s, st, d, fl] = await Promise.all([dbGet('shoes'), dbGet('settings'), dbGet('draft'), dbGet('flyers')]);
+        const [s, st, d, fl, ph] = await Promise.all([dbGet('shoes'), dbGet('settings'), dbGet('draft'), dbGet('flyers'), dbGet('photos')]);
         if (!alive) return;
         const ls = normalizeItems(s);
         const lset = normalizeSettings(st, guessLang());
         const ld = normalizeDraft(d, lset.uiLang);
         const lf = normalizeFlyers(fl, lset.uiLang);
+        const lp = cleanPhotos(ph);
+        // stare fotografije stranica (cijela slika u zapisu knjižice) prelaze u zasebne zapise; autospremanje ih odmah upiše
+        const mig = externalizePhotos(ld, lp);
         setItems(ls);
         setSettings(lset);
-        setDraft(ld);
+        setDraft(mig.draft);
         setFlyers(lf);
-        setLoaded({ items: ls, settings: lset, draft: ld, flyers: lf });
+        setPhotos(mig.photos);
+        setLoaded({ items: ls, settings: lset, draft: ld, flyers: lf, photos: lp });
       } catch (e: any) {
         if (alive) setFatal(String(e?.message || e));
       }
@@ -85,6 +92,21 @@ export default function App() {
   useAutosave('settings', settings, loaded?.settings ?? null, onSaveError);
   useAutosave('draft', draft, loaded?.draft ?? null, onSaveError);
   useAutosave('flyers', flyers, loaded?.flyers ?? null, onSaveError);
+  useAutosave('photos', photos, loaded?.photos ?? null, onSaveError);
+
+  const studio = useMemo<StudioState>(() => ({ items, flyers, draft, settings, photos }), [items, flyers, draft, settings, photos]);
+  const persistAll = useCallback(
+    (s: StudioState) => Promise.all([dbSet('shoes', s.items), dbSet('settings', s.settings), dbSet('draft', s.draft), dbSet('flyers', s.flyers), dbSet('photos', s.photos)]).then(() => undefined),
+    [],
+  );
+  const setAll = useCallback((s: StudioState) => {
+    setItems(s.items);
+    setSettings(s.settings);
+    setDraft(s.draft);
+    setFlyers(s.flyers);
+    setPhotos(s.photos);
+  }, []);
+  const cloud = useCloudSync({ ready: !!loaded, state: studio, setState: setAll, persist: persistAll, lang });
 
   if (fatal)
     return (
@@ -100,6 +122,7 @@ export default function App() {
     <div className={`app lang-${lang}`}>
       <header className="top">
         <h1>{t('appName')}</h1>
+        <button type="button" className="cloudchip" data-cloud-chip onClick={() => setTab('settings')} title={cloudText(t, cloud.info)}>{cloudChip(cloud.info)}</button>
         <nav className="tabs">
           {(['items', 'booklet', 'flyers', 'settings'] as Tab[]).map((k) => (
             <button key={k} type="button" className="tab" aria-pressed={tab === k} data-tab={k} onClick={() => setTab(k)}>
@@ -114,7 +137,7 @@ export default function App() {
         </p>
       )}
       {tab === 'items' && <ItemsTab t={t} items={items} setItems={setItems} />}
-      {tab === 'booklet' && <BookletTab t={t} items={items} settings={settings} draft={draft} setDraft={setDraft} />}
+      {tab === 'booklet' && <BookletTab t={t} items={items} settings={settings} draft={draft} setDraft={setDraft} photos={photos} setPhotos={setPhotos} />}
       {tab === 'flyers' && <FlyersTab t={t} lang={lang} items={items} settings={settings} flyers={flyers} setFlyers={setFlyers} />}
       {tab === 'settings' && (
         <SettingsTab
@@ -124,13 +147,17 @@ export default function App() {
           items={items}
           draft={draft}
           flyers={flyers}
+          photos={photos}
+          cloud={cloud}
           onRestore={(s, st, d, fl) => {
+            const mig = externalizePhotos(d, {});
             setItems(s);
             setSettings(st);
-            setDraft(d);
+            setDraft(mig.draft);
             setFlyers(fl);
+            setPhotos(mig.photos);
             // zapiši odmah: povratak ne smije ovisiti o stanci autospremanja
-            void Promise.all([dbSet('shoes', s), dbSet('settings', st), dbSet('draft', d), dbSet('flyers', fl)]).catch(onSaveError);
+            void persistAll({ items: s, settings: st, draft: mig.draft, flyers: fl, photos: mig.photos }).catch(onSaveError);
           }}
         />
       )}
@@ -282,7 +309,7 @@ function ItemEditor({ t, shoe, onSave, onCancel }: { t: TFn; shoe: Item; onSave:
 }
 
 /* ───────────── Knjižica ───────────── */
-function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: Item[]; settings: Settings; draft: BookletDraft; setDraft: (f: (d: BookletDraft) => BookletDraft) => void }) {
+function BookletTab({ t, items, settings, draft, setDraft, photos, setPhotos }: { t: TFn; items: Item[]; settings: Settings; draft: BookletDraft; setDraft: (f: (d: BookletDraft) => BookletDraft) => void; photos: Record<string, string>; setPhotos: (f: (p: Record<string, string>) => Record<string, string>) => void }) {
   const [msg, setMsg] = useState<Msg | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -319,8 +346,16 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
     setBusy('upload');
     setMsg(null);
     try {
-      const refs: string[] = [];
-      for (const f of Array.from(files)) refs.push(await photoToDataUrl(f));
+      const urls: string[] = [];
+      for (const f of Array.from(files)) urls.push(await photoToDataUrl(f));
+      // slika se sprema zasebno, stranica nosi samo njezin id (knjižica ostaje mala)
+      const added: Record<string, string> = {};
+      const refs = urls.map((u) => {
+        const id = newPhotoId({ ...photos, ...added });
+        added[id] = u;
+        return id;
+      });
+      setPhotos((cur) => ({ ...cur, ...added }));
       updatePage(pageId, (p) => (p.type === 'photos' ? { ...p, items: [...p.items, ...refs.map((ref) => ({ ref, caption: '' }))].slice(0, 60) } : p));
     } catch (e: any) {
       say(t('photoFail', { detail: String(e?.message || e).slice(0, 120) }), false);
@@ -361,7 +396,7 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
     setBusy(kind);
     setMsg(null);
     try {
-      const b = prepare(toBuildInput(draft, items, settings));
+      const b = prepare(toBuildInput(draft, items, settings, photos));
       const mb = (b.bytes / 1024 / 1024).toFixed(1);
       setNotes(b.bytes > BIG_BYTES ? [t('big', { size: mb })] : []);
       say(t('done', { size: mb }));
@@ -380,7 +415,7 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
     setBusy(kind);
     setMsg(null);
     try {
-      const blobs = await renderBookletImages(toBuildInput(draft, items, settings));
+      const blobs = await renderBookletImages(toBuildInput(draft, items, settings, photos));
       const files = pictureFiles(blobs, draft.title);
       const mb = (files.reduce((n, f) => n + f.size, 0) / 1024 / 1024).toFixed(1);
       setNotes([]);
@@ -517,7 +552,7 @@ function BookletTab({ t, items, settings, draft, setDraft }: { t: TFn; items: It
                 <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))' }}>
                   {p.items.map((it, i) => (
                     <div key={i} className="shoe" data-photo>
-                      <div className="ph"><img src={it.ref} alt="" /></div>
+                      <div className="ph"><img src={photoSrc(photos, it.ref)} alt="" /></div>
                       <div className="meta">
                         <input type="text" aria-label={t('caption')} placeholder={t('caption')} value={it.caption} maxLength={200} onChange={(e) => updatePage(p.id, (x) => (x.type === 'photos' ? { ...x, items: x.items.map((y, j) => (j === i ? { ...y, caption: e.target.value } : y)) } : x))} />
                       </div>
@@ -922,7 +957,7 @@ function FlyerEditor({ t, items, settings, flyer, onBack, onChange }: { t: TFn; 
 }
 
 /* ───────────── Postavke ───────────── */
-function SettingsTab({ t, settings, setSettings, items, draft, flyers, onRestore }: { t: TFn; settings: Settings; setSettings: (f: (s: Settings) => Settings) => void; items: Item[]; draft: BookletDraft; flyers: Flyer[]; onRestore: (s: Item[], st: Settings, d: BookletDraft, fl: Flyer[]) => void }) {
+function SettingsTab({ t, settings, setSettings, items, draft, flyers, photos, cloud, onRestore }: { t: TFn; settings: Settings; setSettings: (f: (s: Settings) => Settings) => void; items: Item[]; draft: BookletDraft; flyers: Flyer[]; photos: Record<string, string>; cloud: ReturnType<typeof useCloudSync>; onRestore: (s: Item[], st: Settings, d: BookletDraft, fl: Flyer[]) => void }) {
   const [msg, setMsg] = useState<Msg | null>(null);
   const [pending, setPending] = useState<File | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -930,7 +965,7 @@ function SettingsTab({ t, settings, setSettings, items, draft, flyers, onRestore
   const bad = new Set(settingsIssues(settings).map((i) => i.field));
 
   const saveBackup = () => {
-    const b = makeBackup(items, settings, draft, flyers);
+    const b = makeBackup(items, settings, inlinePhotos(draft, usedPhotos(draft, photos)), flyers);
     downloadFile(`booklet-studio-backup-${b.savedAt.slice(0, 10)}.json`, JSON.stringify(b), 'application/json');
     setMsg({ text: t('backupSaved'), ok: true });
   };
@@ -945,6 +980,7 @@ function SettingsTab({ t, settings, setSettings, items, draft, flyers, onRestore
 
   return (
     <>
+      <CloudCard t={t} cloud={cloud} />
       <div className="card">
         <h2>{t('contact')}</h2>
         <label className="f"><span>{t('business')}</span><input type="text" value={settings.businessName} onChange={set('businessName')} /></label>
@@ -996,5 +1032,51 @@ function SettingsTab({ t, settings, setSettings, items, draft, flyers, onRestore
         {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok' : 'err'} data-msg>{msg.text}</p>}
       </div>
     </>
+  );
+}
+
+const cleanPhotos = (raw: unknown): Record<string, string> => {
+  const out: Record<string, string> = {};
+  if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'string' && v.startsWith('data:image/')) out[k] = v;
+  return out;
+};
+
+const cloudChip = (i: CloudInfo): string => (i.status === 'ok' ? 'Sync ✓' : i.status === 'syncing' || i.status === 'loading' ? 'Sync …' : i.status === 'off' || i.status === 'signedout' ? 'Sync' : 'Sync !');
+const cloudText = (t: TFn, i: CloudInfo): string =>
+  i.status === 'ok' ? t('cloudOk') : i.status === 'syncing' || i.status === 'loading' ? t('cloudSyncing') : i.status === 'offline' ? t('cloudOffline') : i.status === 'denied' ? t('cloudDenied') : i.status === 'error' ? t('cloudError') : t('cloudOff');
+
+/* ───────────── Isti podaci na svim uređajima ───────────── */
+function CloudCard({ t, cloud }: { t: TFn; cloud: ReturnType<typeof useCloudSync> }) {
+  const { info, signIn, signOut, syncNow } = cloud;
+  const signedIn = !!info.email && info.status !== 'signedout' && info.status !== 'off';
+  const reason = info.error === 'network' ? t('cloudNet') : info.error === 'popup-blocked' ? t('cloudPopup') : info.error === 'unauthorized-domain' ? t('cloudDomain') : info.error;
+  return (
+    <div className="card" data-cloud-card>
+      <h2>{t('cloudTitle')}</h2>
+      <p className="hint">{t('cloudHint')}</p>
+      {signedIn ? (
+        <>
+          <p data-cloud-status role={info.status === 'denied' || info.status === 'error' ? 'alert' : 'status'} className={info.status === 'denied' || info.status === 'error' ? 'err' : 'ok'}>
+            {cloudText(t, info)} · {info.email}
+            {info.lastAt ? ` · ${new Date(info.lastAt).toLocaleTimeString()}` : ''}
+          </p>
+          {info.status === 'denied' && <p className="err">{t('cloudDeniedHelp')}</p>}
+          {info.tooBig > 0 && <p className="warn" data-cloud-toobig>⚠ {t('cloudTooBig', { n: info.tooBig })}</p>}
+          {reason && info.status !== 'denied' && <p className="err" data-cloud-error>{reason}</p>}
+          <div className="row">
+            <button type="button" className="btn" data-cloud-now disabled={info.status === 'syncing'} onClick={() => void syncNow()}>{t('cloudNow')}</button>
+            <button type="button" className="btn" data-cloud-out onClick={() => void signOut()}>{t('cloudOut')}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          {reason && <p role="alert" className="err" data-cloud-error>{reason}</p>}
+          <div className="row">
+            <button type="button" className="btn primary" data-cloud-in disabled={info.status === 'loading'} onClick={() => void signIn()}>{info.status === 'loading' ? t('building') : t('cloudIn')}</button>
+          </div>
+          <p className="hint" style={{ marginTop: 8 }}>{t('cloudFirst')}</p>
+        </>
+      )}
+    </div>
   );
 }

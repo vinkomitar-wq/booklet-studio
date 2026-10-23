@@ -4,7 +4,10 @@ Odgovaraj **hrvatski, koncizno**. Vlasnik (Vinko) nije tehnički: objašnjavaj j
 
 ## Što je ovo
 - Samostalna aplikacija (React + Vite, PWA) za izradu **knjižica** i **letaka** (prvi korisnik: Parry, slikane cipele; ali je opća). NIJE vezana uz trgovinu `parry-shoe-shop`.
-- Podaci su **samo u uređaju** (IndexedDB); sigurnosna kopija je JSON datoteka. Ništa se ne šalje na server. U repo NIKAD ne ide ništa osobno (telefon, slike, cijene).
+- Podaci su u uređaju (IndexedDB) i radi se **bez interneta**. Uz prijavu Google (samo administratori Parryjeva dućana) usklađuju se između uređaja kroz Firebase projekt `payc-141f9`, kolekcija `studio` (pravila su u repou `parry-shoe-shop`, `firestore.rules`; objavljuju se same kad prođu testovi). Sigurnosna kopija je JSON datoteka (slike unutra) i ostaje kao zasebna zaštita. U repo NIKAD ne ide ništa osobno (telefon, slike, cijene) ni tajni ključevi; Firebase web-konfiguracija je javna.
+- **Sinkronizacija** (`src/lib/sync.ts`, čisto, pod testom): svaki zapis (stavka, letak, slika stranice, knjižica, postavke, redoslijed) ima otisak; šalje se samo izmijenjeno, povlači samo novije od zadnjeg kruga (upit „što je novo", **bez slušatelja** — dnevna kvota čitanja dijeli se s dućanom). Sukob = lokalno pobjeđuje; brisanje je nadgrobna oznaka (`deleted`), ne pravo brisanje; početna/prazna knjižica i postavke se ne šalju i ne gaze ono što je već na poslužitelju; `uiLang` je lokalan. Zapis veći od `MAX_PAYLOAD` se ne šalje i to piše na ekranu (Firestore dokument ≤ 1 MiB). Stanje se na uređaj upisuje PRIJE evidencije „usklađeno" (inače pad usred kruga pošalje staro preko novog).
+- Fotografije stranica „photos" su zasebni zapisi: stranica nosi samo id (`ph…`), slika je u `photos` (IndexedDB) — stari zapisi s cijelom slikom u stranici sele se sami pri učitavanju (`externalizePhotos`), a sigurnosna kopija ih vraća kao `data:` (`inlinePhotos`).
+- `src/lib/firestoreRemote.ts` se prije promjena može provjeriti na emulatoru: `tests/remote.emulator.ts` (ručno, nije dio `npm test`).
 - Objava: GitHub Pages iz `main` (`.github/workflows/pages.yml`). `base: './'` u `vite.config.ts` mora ostati — radi na bilo kojoj putanji.
 
 ## Pravila
