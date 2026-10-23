@@ -15,7 +15,7 @@ export interface Item {
   /** Kratak opis (neobavezno). */
   desc: string;
   images: string[];
-  /** Šifra cipele u web-dućanu iz koje je stavka uvezena (nema = unesena ručno). Služi da se ista cipela ne uveze dvaput. */
+  /** Šifra iz koje je stavka uvezena: cipela iz web-dućana, ili `fleet:<šifra>` za brod s thailandboattours.com (nema = unesena ručno). Služi da se isto ne uveze dvaput. */
   shopId?: string;
 }
 

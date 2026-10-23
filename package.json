@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "tsx tests/booklet.test.ts && tsx tests/studio.test.ts && tsx tests/render.test.ts && tsx tests/flyer.test.ts && tsx tests/sync.test.ts && tsx tests/shopimport.test.ts"
+    "test": "tsx tests/booklet.test.ts && tsx tests/studio.test.ts && tsx tests/render.test.ts && tsx tests/flyer.test.ts && tsx tests/sync.test.ts && tsx tests/shopimport.test.ts && tsx tests/boatimport.test.ts"
   },
   "dependencies": {
     "firebase": "^11.10.0",
