@@ -2,7 +2,7 @@
 
 Standalone web app for making **booklets** and **flyers** of painted shoes. Works on phone, tablet and PC, installs as an app, and works offline.
 
-- Add shoes (photos, name, price) — everything is stored **on the device** (IndexedDB), nothing is sent to a server.
+- Add shoes (photos, name, price) — stored **on the device** (IndexedDB) and works offline. Sign in with Google (shop admin accounts only) in Settings and the same data syncs between phone, tablet and PC.
 - Build a booklet: pages of shoes (2 / 4 / 6 / 9 per page, each page fits the screen), own photo pages, text pages, "how to order" last page.
 - Export one self-contained `.html` file (open anywhere, no internet needed) and share it through WhatsApp / LINE / mail.
 - Backup file (JSON) to keep data safe and move it to another device.

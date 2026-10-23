@@ -4,6 +4,7 @@
  */
 import { BookletBuildInput, BookletContact, BookletDraft, BookletLang, BookletShoe, normalizeDraft } from './booklet';
 import { Flyer, normalizeFlyers } from './flyer';
+import { photoSrc } from './photoRef';
 
 /** Stavka knjižice/letka: bilo što (proizvod, usluga, ponuda). U kodu knjižice zove se „shoe" iz povijesnih razloga; korisnik to nikad ne vidi. */
 export interface Item {
@@ -126,13 +127,13 @@ export function toContact(s: Settings): BookletContact {
 }
 
 /** Ulaz za slaganje knjižice: samo cipele koje su na stranicama ili naslovnici (datoteka ne nosi slike koje nitko ne koristi). */
-export function toBuildInput(draft: BookletDraft, items: Item[], settings: Settings): BookletBuildInput {
+export function toBuildInput(draft: BookletDraft, items: Item[], settings: Settings, storedPhotos: Record<string, string> = {}): BookletBuildInput {
   const wanted = new Set<string>();
   if (draft.coverShoeId) wanted.add(draft.coverShoeId);
   const photos: Record<string, string> = {};
   for (const p of draft.pages) {
     if (p.type === 'shoes') p.shoeIds.forEach((id) => wanted.add(id));
-    else if (p.type === 'photos') p.items.forEach((it) => (photos[it.ref] = it.ref)); // ref je sama slika (data: adresa)
+    else if (p.type === 'photos') p.items.forEach((it) => (photos[it.ref] = photoSrc(storedPhotos, it.ref))); // ref je id spremljene slike (ili, u starim zapisima, sama data: adresa)
   }
   const bookletShoes: BookletShoe[] = items.filter((s) => wanted.has(s.id)).map((s) => ({ id: s.id, title: s.title, images: s.images, priceText: draft.showPrices ? s.price : '', desc: s.desc }));
   return { draft, shoes: bookletShoes, photos, contact: toContact(settings) };

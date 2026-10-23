@@ -1,9 +1,9 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:#FAF9F6;color:#1A1A1A;font-family:"Inter","Noto Sans Thai","Sukhumvit Set",Tahoma,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;-webkit-text-size-adjust:100%}
 .app{max-width:960px;margin:0 auto;padding:0 12px 96px}
-.top{position:sticky;top:0;z-index:5;background:#1A1A1A;color:#FAF9F6;margin:0 -12px 16px;padding:10px 12px;display:flex;align-items:center;gap:12px}
+.top{position:sticky;top:0;z-index:5;background:#1A1A1A;color:#FAF9F6;margin:0 -12px 16px;padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .top h1{margin:0;font-size:15px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-right:auto}
-.tabs{display:flex;gap:6px}
+.tabs{display:flex;gap:6px;order:3;flex:1 1 100%;overflow-x:auto}
 .tab{border:1px solid #FAF9F6;background:transparent;color:#FAF9F6;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;border-radius:2px}
 .tab[aria-pressed=true]{background:#FAF9F6;color:#1A1A1A}
 .card{background:#fff;border:1px solid #1A1A1A;padding:16px;margin-bottom:14px}
@@ -59,3 +59,5 @@ textarea{min-height:90px;resize:vertical}
 .sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:16px 8px}
 .sheet .box{background:#FAF9F6;border:1px solid #1A1A1A;width:100%;max-width:560px;padding:16px}
 .lang-th,.lang-th *{letter-spacing:normal!important;text-transform:none!important}
+
+.cloudchip{background:transparent;color:#FAF9F6;border:1px solid #FAF9F6;padding:4px 8px;font:inherit;font-size:12px;cursor:pointer;min-height:32px}
