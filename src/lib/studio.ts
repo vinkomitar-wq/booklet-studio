@@ -4,11 +4,14 @@
  */
 import { BookletBuildInput, BookletContact, BookletDraft, BookletLang, BookletShoe, normalizeDraft } from './booklet';
 
-export interface Shoe {
+/** Stavka knjižice/letka: bilo što (proizvod, usluga, ponuda). U kodu knjižice zove se „shoe" iz povijesnih razloga; korisnik to nikad ne vidi. */
+export interface Item {
   id: string;
   title: string;
-  /** Slobodan tekst cijene kako je Parry upiše („฿699", „from 599"). Prazno = bez cijene. */
+  /** Slobodan tekst cijene kako ga korisnik upiše („฿699", „from 599"). Prazno = bez cijene. */
   price: string;
+  /** Kratak opis (neobavezno). */
+  desc: string;
   images: string[];
 }
 
@@ -54,9 +57,9 @@ export function normalizeSettings(raw: unknown, fallbackLang: BookletLang = 'en'
   };
 }
 
-export function normalizeShoes(raw: unknown): Shoe[] {
+export function normalizeItems(raw: unknown): Item[] {
   const seen = new Set<string>();
-  const out: Shoe[] = [];
+  const out: Item[] = [];
   for (const s of Array.isArray(raw) ? raw : []) {
     if (!s || typeof s !== 'object') continue;
     const o = s as Record<string, unknown>;
@@ -67,6 +70,7 @@ export function normalizeShoes(raw: unknown): Shoe[] {
       id,
       title: str(o.title, 120),
       price: str(o.price, 60),
+      desc: str(o.desc, 300),
       images: (Array.isArray(o.images) ? o.images : []).filter((x): x is string => typeof x === 'string' && x.startsWith('data:image/')).slice(0, 3),
     });
     if (out.length >= 500) break;
@@ -121,7 +125,7 @@ export function toContact(s: Settings): BookletContact {
 }
 
 /** Ulaz za slaganje knjižice: samo cipele koje su na stranicama ili naslovnici (datoteka ne nosi slike koje nitko ne koristi). */
-export function toBuildInput(draft: BookletDraft, shoes: Shoe[], settings: Settings): BookletBuildInput {
+export function toBuildInput(draft: BookletDraft, items: Item[], settings: Settings): BookletBuildInput {
   const wanted = new Set<string>();
   if (draft.coverShoeId) wanted.add(draft.coverShoeId);
   const photos: Record<string, string> = {};
@@ -129,32 +133,63 @@ export function toBuildInput(draft: BookletDraft, shoes: Shoe[], settings: Setti
     if (p.type === 'shoes') p.shoeIds.forEach((id) => wanted.add(id));
     else if (p.type === 'photos') p.items.forEach((it) => (photos[it.ref] = it.ref)); // ref je sama slika (data: adresa)
   }
-  const bookletShoes: BookletShoe[] = shoes.filter((s) => wanted.has(s.id)).map((s) => ({ id: s.id, title: s.title, images: s.images, priceText: draft.showPrices ? s.price : '' }));
+  const bookletShoes: BookletShoe[] = items.filter((s) => wanted.has(s.id)).map((s) => ({ id: s.id, title: s.title, images: s.images, priceText: draft.showPrices ? s.price : '', desc: s.desc }));
   return { draft, shoes: bookletShoes, photos, contact: toContact(settings) };
 }
 
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 export interface Backup {
   app: 'booklet-studio';
   version: number;
   savedAt: string;
-  shoes: Shoe[];
+  items: Item[];
   settings: Settings;
   draft: BookletDraft;
 }
 
-export const makeBackup = (shoes: Shoe[], settings: Settings, draft: BookletDraft, now: Date = new Date()): Backup => ({ app: 'booklet-studio', version: BACKUP_VERSION, savedAt: now.toISOString(), shoes, settings, draft });
+export const makeBackup = (items: Item[], settings: Settings, draft: BookletDraft, now: Date = new Date()): Backup => ({ app: 'booklet-studio', version: BACKUP_VERSION, savedAt: now.toISOString(), items, settings, draft });
 
-/** Čita sigurnosnu kopiju. Tuđa ili oštećena datoteka se ODBIJA s razlogom, ne uvozi se napola. */
-export function parseBackup(text: string): { ok: true; shoes: Shoe[]; settings: Settings; draft: BookletDraft } | { ok: false; reason: 'not-json' | 'not-ours' | 'newer' } {
+/** Čita sigurnosnu kopiju (i staru, verzija 1, gdje su se stavke zvale „shoes"). Tuđa ili oštećena datoteka se ODBIJA s razlogom, ne uvozi se napola. */
+export function parseBackup(text: string): { ok: true; items: Item[]; settings: Settings; draft: BookletDraft } | { ok: false; reason: 'not-json' | 'not-ours' | 'newer' } {
   let o: any;
   try {
     o = JSON.parse(text);
   } catch {
     return { ok: false, reason: 'not-json' };
   }
-  if (!o || o.app !== 'booklet-studio' || !Array.isArray(o.shoes)) return { ok: false, reason: 'not-ours' };
+  const list = o && Array.isArray(o.items) ? o.items : o && Array.isArray(o.shoes) ? o.shoes : null;
+  if (!o || o.app !== 'booklet-studio' || !list) return { ok: false, reason: 'not-ours' };
   if (typeof o.version === 'number' && o.version > BACKUP_VERSION) return { ok: false, reason: 'newer' };
   const settings = normalizeSettings(o.settings);
-  return { ok: true, shoes: normalizeShoes(o.shoes), settings, draft: normalizeDraft(o.draft, settings.uiLang) };
+  return { ok: true, items: normalizeItems(list), settings, draft: normalizeDraft(o.draft, settings.uiLang) };
+}
+
+/**
+ * Predložak „pred-narudžba za brodsku turu": popuni korake, oznaku i poruku. To su samo POČETNE vrijednosti — sve se poslije uređuje.
+ * Mjesto (zasad Phuket) upisuje korisnik, ne stoji u kodu; prazno mjesto se izostavlja (nema praznih zagrada ni praznog retka).
+ */
+export function boatTripPreset(lang: BookletLang, place: string): Pick<BookletDraft, 'stepsTitle' | 'stepsBadge' | 'steps' | 'waMessage'> {
+  const p = place.trim();
+  if (lang === 'th') {
+    return {
+      stepsTitle: 'อยากได้บนทริปเรือ? สั่งล่วงหน้า',
+      stepsBadge: 'สต็อกบนเรือมีจำกัด — ต้องสั่งล่วงหน้า',
+      steps: [
+        { title: 'เลือกสินค้า', desc: 'สั่งผ่านเว็บไซต์ หรือส่งข้อความหาเรา' },
+        { title: 'บอกวันที่ เรือ และสถานที่', desc: `วันที่ ชื่อเรือ และจุดรับ${p ? ` (${p})` : ''} — ต้องแจ้งล่วงหน้า` },
+        { title: 'จ่ายและรับบนเรือ', desc: 'เงินสด / สแกน QR ลูกเรือนำสินค้าที่สั่งไว้มาให้' },
+      ],
+      waMessage: `สวัสดีค่ะ อยากสั่งล่วงหน้าสำหรับทริปเรือ\nสินค้า: \nไซส์: \nวันที่: \nชื่อเรือ:${p ? ` \nสถานที่: ${p}` : ''}`,
+    };
+  }
+  return {
+    stepsTitle: 'Want it on your boat trip? Pre-order',
+    stepsBadge: 'Limited stock on board — pre-order only',
+    steps: [
+      { title: 'Choose your item', desc: 'Order on the web store, or message us.' },
+      { title: 'Tell us the date, boat and place', desc: `Date, boat name and where${p ? ` (${p})` : ''} — please tell us in advance.` },
+      { title: 'Pay and collect on board', desc: 'Cash or QR — the crew bring your pre-ordered item.' },
+    ],
+    waMessage: `Hi! I would like to pre-order for my boat trip.\nItem: \nSize: \nDate: \nBoat name:${p ? ` \nPlace: ${p}` : ''}`,
+  };
 }

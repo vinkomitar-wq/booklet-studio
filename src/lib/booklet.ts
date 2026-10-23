@@ -52,7 +52,19 @@ export interface BookletDraft {
   /** Tekst na zadnjoj stranici (kako naručiti). Prazno = zadani tekst na jeziku knjižice. */
   orderNote: string;
   /** Gdje se knjižica uzima na brodu (pred-narudžba): zadano Phuket, Parry može promijeniti. Prazno = bez imena mjesta. */
-  boatPlace: string;
+  /** Naslov zadnje stranice; prazno = zadani tekst. */
+  orderHeading: string;
+  /** Neobavezni koraci (npr. odaberi, javi datum, plati): najviše 6. Prazno = bez koraka. */
+  steps: BookletStep[];
+  /** Naslov iznad koraka i oznaka uz njega (npr. ograničena zaliha). */
+  stepsTitle: string;
+  stepsBadge: string;
+  /** Poruka koja se otvori u WhatsAppu kad gost pritisne kontakt; prazno = zadani pozdrav. */
+  waMessage: string;
+}
+export interface BookletStep {
+  title: string;
+  desc: string;
 }
 
 export interface BookletShoe {
@@ -62,6 +74,8 @@ export interface BookletShoe {
   images: string[];
   /** Već složen tekst cijene („฿5,990" / „from ฿4,990"); prazno = cijena se ne prikazuje. */
   priceText: string;
+  /** Kratak opis (neobavezno). */
+  desc?: string;
 }
 
 export interface BookletContact {
@@ -86,71 +100,47 @@ export interface BookletBuildInput {
 
 export const LABELS: Record<BookletLang, Record<string, string>> = {
   th: {
-    defaultTitle: 'ตัวอย่างรองเท้าวาดมือ',
-    defaultSubtitle: 'ศิลปะวาดด้วยมือ',
+    defaultTitle: 'สมุดภาพของฉัน',
+    defaultSubtitle: '',
     prev: 'ก่อนหน้า',
     next: 'ถัดไป',
     restart: 'กลับหน้าแรก',
     page: 'หน้า',
     of: 'จาก',
     priceFrom: 'เริ่มต้น',
-    boatHeading: 'วิธีสั่งซื้อ',
-    onlineOption: 'สั่งซื้อผ่านเว็บไซต์',
-    onlineBody: 'เลือกลายและไซส์ แล้วสั่งซื้อออนไลน์ได้เลย',
+    orderHeading: 'วิธีสั่งซื้อ',
+    onlineOption: 'สั่งซื้อออนไลน์',
+    onlineBody: 'ดูทั้งหมดและสั่งซื้อได้ที่เว็บไซต์ของเรา',
     onlineBtn: 'เปิดเว็บไซต์',
-    boatOption: 'อยากได้บนทริปเรือ? สั่งล่วงหน้า',
-    boatLimited: 'สต็อกบนเรือมีจำกัด — ต้องสั่งล่วงหน้า',
-    step1: 'เลือกลายและไซส์',
-    step1d: 'สั่งผ่านเว็บไซต์ หรือส่งข้อความหาเรา',
-    step2: 'บอกวันที่ เรือ และสถานที่',
-    step2d: 'วันที่ ชื่อเรือ และจุดรับ{place} — ต้องแจ้งล่วงหน้า',
-    step3: 'จ่ายและใส่บนเรือ',
-    step3d: 'เงินสด / สแกน QR ลูกเรือนำคู่ที่สั่งไว้มาให้',
-    preorderBtn: 'สั่งล่วงหน้าทาง WhatsApp',
-    preorderMsg: 'สวัสดีค่ะ อยากสั่งรองเท้าล่วงหน้าสำหรับทริปเรือ\nลาย: \nไซส์: \nวันที่: \nชื่อเรือ: \nสถานที่: {place}',
-    careHeading: 'หมายเหตุ',
-    careBody: 'เพ้นท์มือทุกคู่ ไม่ซ้ำกัน ทำความสะอาดด้วยผ้าชุบน้ำหมาด',
     contactHeading: 'ติดต่อเรา',
     owner: 'เจ้าของร้าน',
     phone: 'โทร',
     email: 'อีเมล',
     website: 'เว็บไซต์',
-    waHello: 'สวัสดีค่ะ ดูสมุดภาพรองเท้าวาดมือแล้ว สนใจค่ะ',
+    waHello: 'สวัสดีค่ะ ดูสมุดภาพของร้านแล้ว สนใจค่ะ',
     lineAdd: 'เพิ่มเพื่อนใน LINE',
     photo: 'รูป',
     close: 'ปิด',
   },
   en: {
-    defaultTitle: 'Hand-Painted Shoes — Examples',
-    defaultSubtitle: 'Hand-Painted Artistry',
+    defaultTitle: 'My booklet',
+    defaultSubtitle: '',
     prev: 'Prev',
     next: 'Next',
     restart: 'Back to start',
     page: 'Page',
     of: 'of',
     priceFrom: 'from',
-    boatHeading: 'How to order',
-    onlineOption: 'Order on our web store',
-    onlineBody: 'Pick your design and size and order online.',
-    onlineBtn: 'Open the web store',
-    boatOption: 'Want them on your boat trip? Pre-order',
-    boatLimited: 'Limited stock on board — pre-order only',
-    step1: 'Choose your design and size',
-    step1d: 'Order on the web store, or message us.',
-    step2: 'Tell us the date, boat and place',
-    step2d: 'Date, boat name and where{place} — please tell us in advance.',
-    step3: 'Pay and wear them on board',
-    step3d: 'Cash or QR — the crew bring your pre-ordered pair.',
-    preorderBtn: 'Pre-order on WhatsApp',
-    preorderMsg: 'Hi! I would like to pre-order shoes for my boat trip.\nDesign: \nSize: \nDate: \nBoat name: \nPlace: {place}',
-    careHeading: 'Note',
-    careBody: 'Hand-painted, each pair unique. Avoid heavy rain, wipe clean with a damp cloth.',
+    orderHeading: 'How to order',
+    onlineOption: 'Order online',
+    onlineBody: 'See everything and order on our website.',
+    onlineBtn: 'Open the website',
     contactHeading: 'Contact us',
     owner: 'Owner',
     phone: 'Phone',
     email: 'Email',
     website: 'Website',
-    waHello: 'Hi! I saw your booklet of hand-painted shoes and I am interested.',
+    waHello: 'Hi! I saw your booklet and I am interested.',
     lineAdd: 'Add us on LINE',
     photo: 'Photo',
     close: 'Close',
@@ -204,7 +194,11 @@ export const defaultDraft = (lang: BookletLang = 'th'): BookletDraft => ({
   coverShoeId: '',
   pages: [],
   orderNote: '',
-  boatPlace: 'Phuket',
+  orderHeading: '',
+  steps: [],
+  stepsTitle: '',
+  stepsBadge: '',
+  waMessage: '',
 });
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -287,7 +281,15 @@ export function normalizeDraft(raw: unknown, uiLang: BookletLang = 'th'): Bookle
     coverShoeId: str(raw.coverShoeId, 40),
     pages,
     orderNote: str(raw.orderNote, 2000),
-    boatPlace: typeof raw.boatPlace === 'string' ? raw.boatPlace.trim().slice(0, 60) : 'Phuket',
+    orderHeading: str(raw.orderHeading, 120),
+    steps: (Array.isArray(raw.steps) ? raw.steps : [])
+      .filter(isObj)
+      .map((st) => ({ title: str(st.title, 120), desc: str(st.desc, 300) }))
+      .filter((st) => st.title || st.desc)
+      .slice(0, 6),
+    stepsTitle: str(raw.stepsTitle, 120),
+    stepsBadge: str(raw.stepsBadge, 80),
+    waMessage: str(raw.waMessage, 600),
   };
 }
 
@@ -348,8 +350,8 @@ export function draftIssues(draft: BookletDraft, shoeIds: ReadonlySet<string>): 
 
 /** Kratka poruka uz privitak (LINE/WhatsApp), na jeziku knjižice. */
 export function shareMessage(draft: BookletDraft, contact: BookletContact): string {
-  const hello = draft.lang === 'th' ? 'สวัสดีค่ะ ส่งสมุดภาพตัวอย่างรองเท้าวาดมือมาให้ดูค่ะ' : 'Hi! Here is our booklet of hand-painted shoe examples.';
-  const how = draft.lang === 'th' ? 'ถูกใจลายไหน ทักมาทาง LINE/WhatsApp ได้เลยค่ะ' : 'If you like one, message us on LINE or WhatsApp.';
+  const hello = draft.lang === 'th' ? 'สวัสดีค่ะ ส่งสมุดภาพมาให้ดูค่ะ' : 'Hi! Here is our booklet.';
+  const how = draft.lang === 'th' ? 'สนใจอะไร ทักมาทาง LINE/WhatsApp ได้เลยค่ะ' : 'If something catches your eye, message us on LINE or WhatsApp.';
   return [hello, how, contact.businessName, contact.whatsappE164 ? `WhatsApp: +${contact.whatsappE164}` : '', contact.shopUrl].filter(Boolean).join('\n');
 }
 
@@ -474,6 +476,7 @@ html,body{margin:0;min-height:100%;background:#0b1220;font-family:"Inter","Noto 
 .pk-img img{width:100%;height:100%;object-fit:cover;display:block}
 .pk-cap{margin-top:6px;display:flex;flex-direction:column;gap:2px}
 .pk-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;overflow-wrap:anywhere}
+.pk-d{font-size:11px;line-height:1.35;opacity:.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pk-p{font-size:11px;font-weight:700;color:#6b7280}
 .pk-text p{margin:0 0 12px;font-size:14px;line-height:1.7}
 .pk-note{margin-top:16px;font-size:13px;line-height:1.6;opacity:.8}
@@ -528,15 +531,57 @@ function imgTag(src: string, alt: string, extra = ''): string {
   return s ? `<img src="${escapeHtml(s)}" alt="${escapeHtml(alt)}" loading="lazy"${extra}>` : '';
 }
 
-function cardHtml(img: string[], title: string, sub: string): string {
+function cardHtml(img: string[], title: string, sub: string, desc = ''): string {
   const [first, ...rest] = img.filter((u) => safeSrc(u));
   // Dodatne slike iste cipele (najviše 2) nisu u mreži — retci ostaju jednake visine — nego se listaju strelicama u povećanju; oznaka „+N" to kaže.
   const extras = rest.slice(0, 2).map((u) => imgTag(u, title)).join('');
   const more = extras ? `<span class="pk-more" aria-hidden="true">+${Math.min(rest.length, 2)}</span><span hidden>${extras}</span>` : '';
-  return `<figure class="pk-card"><div class="pk-img">${first ? imgTag(first, title) : ''}${more}</div><figcaption class="pk-cap">${title ? `<span class="pk-t">${escapeHtml(title)}</span>` : ''}${sub ? `<span class="pk-p">${escapeHtml(sub)}</span>` : ''}</figcaption></figure>`;
+  return `<figure class="pk-card"><div class="pk-img">${first ? imgTag(first, title) : ''}${more}</div><figcaption class="pk-cap">${title ? `<span class="pk-t">${escapeHtml(title)}</span>` : ''}${sub ? `<span class="pk-p">${escapeHtml(sub)}</span>` : ''}${desc ? `<span class="pk-d">${escapeHtml(desc)}</span>` : ''}</figcaption></figure>`;
 }
 
 const heading = (h: string) => (h.trim() ? `<h2 class="pk-h">${escapeHtml(h)}</h2><hr class="pk-rule">` : '');
+
+export interface OrderModel {
+  heading: string;
+  /** Kartica web trgovine: samo kad adresa postoji (gumb koji nikamo ne vodi gori je od nikakvog). */
+  shop: { title: string; body: string; btn: string; url: string; display: string } | null;
+  stepsTitle: string;
+  badge: string;
+  steps: BookletStep[];
+  note: string;
+  contactHeading: string;
+  owner: { label: string; name: string } | null;
+  contacts: { label: string; value: string; href: string; main?: boolean }[];
+}
+
+/** Sadržaj zadnje stranice, neovisno o načinu crtanja (HTML ili slika): jedno mjesto pravila, pa se oblici ne mogu razići. */
+export function orderPageModel(input: BookletBuildInput): OrderModel {
+  const { draft, contact } = input;
+  const L = LABELS[draft.lang];
+  const shopOk = /^https?:\/\//i.test(contact.shopUrl);
+  const display = (u: string) => u.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  const msg = draft.waMessage.trim() || L.waHello;
+  const contacts: OrderModel['contacts'] = [];
+  const add = (href: string, label: string, value: string, main = false) => {
+    if (href && value) contacts.push({ label, value, href, main });
+  };
+  add(contact.whatsappE164 ? `https://wa.me/${contact.whatsappE164}?text=${encodeURIComponent(msg)}` : '', 'WhatsApp', contact.whatsappE164 ? `+${contact.whatsappE164}` : '', true);
+  add(contact.lineUrl, 'LINE', contact.lineDisplay || L.lineAdd);
+  add(contact.phoneE164 ? `tel:+${contact.phoneE164}` : '', L.phone, contact.phoneDisplay);
+  add(contact.email ? `mailto:${contact.email}` : '', L.email, contact.email);
+  add(shopOk ? contact.shopUrl : '', L.website, display(contact.shopUrl));
+  return {
+    heading: draft.orderHeading.trim() || L.orderHeading,
+    shop: shopOk ? { title: L.onlineOption, body: L.onlineBody, btn: L.onlineBtn, url: contact.shopUrl, display: display(contact.shopUrl) } : null,
+    stepsTitle: draft.stepsTitle.trim(),
+    badge: draft.stepsBadge.trim(),
+    steps: draft.steps,
+    note: draft.orderNote.trim(),
+    contactHeading: L.contactHeading,
+    owner: contact.ownerName ? { label: L.owner, name: contact.ownerName } : null,
+    contacts,
+  };
+}
 
 /** Stranice knjižice kao HTML nizovi (naslovnica prva, „kako naručiti i kontakt" zadnja). Stranica bez ičega za pokazati se izostavlja. */
 export function bookletPages(input: BookletBuildInput): string[] {
@@ -561,7 +606,7 @@ export function bookletPages(input: BookletBuildInput): string[] {
       const per = perPageOf(p);
       const chunks = shoeChunks(usable, per);
       chunks.forEach((chunk, i) => {
-        const cards = chunk.map((s) => cardHtml(s.images, s.title, draft.showPrices ? s.priceText : ''));
+        const cards = chunk.map((s) => cardHtml(s.images, s.title, draft.showPrices ? s.priceText : '', s.desc ?? ''));
         const part = chunks.length > 1 ? `<span class="pk-part">${i + 1} / ${chunks.length}</span>` : '';
         const head = p.heading.trim() ? `<h2 class="pk-h">${escapeHtml(p.heading)}${part}</h2><hr class="pk-rule">` : part ? `<h2 class="pk-h">${part}</h2><hr class="pk-rule">` : '';
         const note = i === chunks.length - 1 && p.note.trim() ? `<div class="pk-note">${paragraphsHtml(p.note)}</div>` : '';
@@ -577,30 +622,23 @@ export function bookletPages(input: BookletBuildInput): string[] {
     }
   }
 
-  // kako naručiti + kontakt: samo ono što trgovina stvarno ima (prazno polje se ne piše)
-  const wa = contact.whatsappE164 ? `https://wa.me/${contact.whatsappE164}?text=${encodeURIComponent(L.waHello)}` : '';
-  const links: string[] = [];
-  const link = (href: string, label: string, value: string, primary = false) => href && value && links.push(`<a class="pk-link${primary ? ' pk-link-main' : ''}" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span></a>`);
-  link(wa, 'WhatsApp', contact.whatsappE164 ? `+${contact.whatsappE164}` : '', true);
-  link(contact.lineUrl, 'LINE', contact.lineDisplay || L.lineAdd);
-  link(contact.phoneE164 ? `tel:+${contact.phoneE164}` : '', L.phone, contact.phoneDisplay);
-  link(contact.email ? `mailto:${contact.email}` : '', L.email, contact.email);
-  link(/^https?:\/\//i.test(contact.shopUrl) ? contact.shopUrl : '', L.website, contact.shopUrl.replace(/^https?:\/\//i, '').replace(/\/$/, ''));
-  const place = draft.boatPlace.trim();
-  const fill = (t: string) => t.replace('{place}', place ? ` (${place})` : '');
-  const steps = [1, 2, 3]
-    .map((n) => `<li class="pk-step${n === 3 ? ' pk-step-last' : ''}"><span class="pk-n">${n}</span><div><b>${escapeHtml(L[`step${n}`])}</b><p>${escapeHtml(fill(L[`step${n}d`]))}</p></div></li>`)
-    .join('');
-  const owner = contact.ownerName ? `<p class="pk-owner"><span>${escapeHtml(L.owner)}:</span> <b>${escapeHtml(contact.ownerName)}</b></p>` : '';
-  const shopOk = /^https?:\/\//i.test(contact.shopUrl);
-  // Glavni put je narudžba u web trgovini. Kartica samo kad adresa stvarno postoji — gumb koji nikamo ne vodi gori je od nikakvog.
-  const online = shopOk
-    ? `<a class="pk-online pk-online-main" href="${escapeHtml(contact.shopUrl)}" target="_blank" rel="noopener noreferrer"><b class="pk-online-t">${escapeHtml(L.onlineOption)}</b><span>${escapeHtml(L.onlineBody)}</span><b>${escapeHtml(L.onlineBtn)} →</b></a>`
+  // zadnja stranica: samo ono što korisnik stvarno ima (prazno polje se ne piše)
+  const o = orderPageModel(input);
+  const online = o.shop
+    ? `<a class="pk-online pk-online-main" href="${escapeHtml(o.shop.url)}" target="_blank" rel="noopener noreferrer"><b class="pk-online-t">${escapeHtml(o.shop.title)}</b><span>${escapeHtml(o.shop.body)}</span><b>${escapeHtml(o.shop.btn)} →</b></a>`
     : '';
-  const preMsg = place ? L.preorderMsg.replace('{place}', place) : L.preorderMsg.replace(/\n[^\n]*\{place\}$/, '');
-  const preorder = contact.whatsappE164 ? `<a class="pk-online" href="https://wa.me/${contact.whatsappE164}?text=${encodeURIComponent(preMsg)}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(L.preorderBtn)} →</b></a>` : '';
+  const steps = o.steps.length
+    ? `${o.stepsTitle ? `<h3 class="pk-sub pk-sub-contact">${escapeHtml(o.stepsTitle)}</h3>` : ''}${o.badge ? `<span class="pk-pill">${escapeHtml(o.badge)}</span>` : ''}<ol class="pk-steps">${o.steps
+        .map((st, i) => `<li class="pk-step${i === o.steps.length - 1 ? ' pk-step-last' : ''}"><span class="pk-n">${i + 1}</span><div><b>${escapeHtml(st.title)}</b>${st.desc ? `<p>${escapeHtml(st.desc)}</p>` : ''}</div></li>`)
+        .join('')}</ol>`
+    : '';
+  const owner = o.owner ? `<p class="pk-owner"><span>${escapeHtml(o.owner.label)}:</span> <b>${escapeHtml(o.owner.name)}</b></p>` : '';
+  const links = o.contacts
+    .map((c) => `<a class="pk-link${c.main ? ' pk-link-main' : ''}" href="${escapeHtml(c.href)}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(c.label)}</b><span>${escapeHtml(c.value)}</span></a>`)
+    .join('');
+  const hasContact = o.contacts.length > 0 || !!o.owner;
   out.push(
-    `<section class="pk-page pk-order"><h2 class="pk-h">${escapeHtml(L.boatHeading)}</h2><hr class="pk-rule">${online}<h3 class="pk-sub pk-sub-contact">${escapeHtml(L.boatOption)}</h3><span class="pk-pill">${escapeHtml(L.boatLimited)}</span><ol class="pk-steps">${steps}</ol>${preorder}${draft.orderNote.trim() ? `<div class="pk-note">${paragraphsHtml(draft.orderNote)}</div>` : ''}<h3 class="pk-sub pk-sub-contact">${escapeHtml(L.contactHeading)}</h3>${owner}<div class="pk-contact">${links.join('')}</div><div class="pk-care"><b>${escapeHtml(L.careHeading)}</b> ${escapeHtml(L.careBody)}</div></section>`,
+    `<section class="pk-page pk-order"><h2 class="pk-h">${escapeHtml(o.heading)}</h2><hr class="pk-rule">${online}${steps}${o.note ? `<div class="pk-note">${paragraphsHtml(o.note)}</div>` : ''}${hasContact ? `<h3 class="pk-sub pk-sub-contact">${escapeHtml(o.contactHeading)}</h3>${owner}<div class="pk-contact">${links}</div>` : ''}</section>`,
   );
   return out;
 }

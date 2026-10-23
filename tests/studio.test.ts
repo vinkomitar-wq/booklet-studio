@@ -1,7 +1,7 @@
 // Podaci aplikacije Booklet Studio: telefon bez pogađanja zemlje, ulaz za knjižicu, sigurnosna kopija (tuđa datoteka se odbija).
 import assert from 'node:assert/strict';
 import { defaultDraft } from '../src/lib/booklet';
-import { defaultSettings, makeBackup, normalizeSettings, normalizeShoes, parseBackup, settingsIssues, toBuildInput, toContact, toE164, type Shoe } from '../src/lib/studio';
+import { boatTripPreset, defaultSettings, makeBackup, normalizeItems, normalizeSettings, parseBackup, settingsIssues, toBuildInput, toContact, toE164, type Item } from '../src/lib/studio';
 
 let failed = 0;
 const t = (name: string, fn: () => void) => {
@@ -36,8 +36,8 @@ t('toContact: neispravno se ne prosljeđuje (nema wa.me s pogrešnim brojem, nem
   assert.equal(c.shopUrl, '');
   assert.equal(c.lineUrl, '');
 });
-t('normalizeShoes: samo slike (data:image), najviše 3, jedinstveni id-evi, najviše 500', () => {
-  const out = normalizeShoes([
+t('normalizeItems: samo slike (data:image), najviše 3, jedinstveni id-evi, najviše 500', () => {
+  const out = normalizeItems([
     { id: 'a', title: ' X ', price: '฿1', images: [IMG, 'http://x/y.jpg', 'javascript:alert(1)', IMG, IMG, IMG] },
     { id: 'a', title: 'Y', images: [] },
     null,
@@ -47,13 +47,13 @@ t('normalizeShoes: samo slike (data:image), najviše 3, jedinstveni id-evi, najv
   assert.equal(out[0].title, 'X');
   assert.equal(out[0].images.length, 3);
   assert.notEqual(out[0].id, out[1].id);
-  assert.equal(normalizeShoes(Array.from({ length: 900 }, (_, i) => ({ id: `s${i}`, title: 't' }))).length, 500);
-  assert.deepEqual(normalizeShoes('nope'), []);
+  assert.equal(normalizeItems(Array.from({ length: 900 }, (_, i) => ({ id: `s${i}`, title: 't' }))).length, 500);
+  assert.deepEqual(normalizeItems('nope'), []);
 });
 t('toBuildInput: samo korištene cipele; cijene se skrivaju kad je showPrices false', () => {
-  const shoes: Shoe[] = [
-    { id: 'a', title: 'A', price: '฿1', images: [IMG] },
-    { id: 'b', title: 'B', price: '฿2', images: [IMG] },
+  const shoes: Item[] = [
+    { id: 'a', title: 'A', price: '฿1', desc: 'opis', images: [IMG] },
+    { id: 'b', title: 'B', price: '฿2', desc: '', images: [IMG] },
   ];
   const d = { ...defaultDraft('en'), pages: [{ id: 'p', type: 'shoes' as const, heading: '', shoeIds: ['a'], note: '' }] };
   const i = toBuildInput(d, shoes, defaultSettings());
@@ -62,21 +62,45 @@ t('toBuildInput: samo korištene cipele; cijene se skrivaju kad je showPrices fa
   assert.equal(toBuildInput({ ...d, showPrices: false }, shoes, defaultSettings()).shoes[0].priceText, '');
 });
 t('sigurnosna kopija: krug (spremi → učitaj) čuva sve; tuđa/oštećena/novija datoteka se odbija', () => {
-  const shoes: Shoe[] = [{ id: 'a', title: 'A', price: '฿1', images: [IMG] }];
+  const shoes: Item[] = [{ id: 'a', title: 'A', price: '฿1', desc: 'opis', images: [IMG] }];
   const settings = normalizeSettings({ businessName: 'Studio', uiLang: 'th' });
   const draft = { ...defaultDraft('th'), title: 'Moja' };
   const text = JSON.stringify(makeBackup(shoes, settings, draft, new Date('2026-10-23T10:00:00Z')));
   const r = parseBackup(text);
   assert.ok(r.ok);
   if (r.ok) {
-    assert.deepEqual(r.shoes, shoes);
+    assert.deepEqual(r.items, shoes);
     assert.equal(r.settings.businessName, 'Studio');
     assert.equal(r.draft.title, 'Moja');
   }
   assert.deepEqual(parseBackup('{not json'), { ok: false, reason: 'not-json' });
-  assert.deepEqual(parseBackup('{"app":"other","shoes":[]}'), { ok: false, reason: 'not-ours' });
+  assert.deepEqual(parseBackup('{"app":"other","items":[]}'), { ok: false, reason: 'not-ours' });
   assert.deepEqual(parseBackup('[]'), { ok: false, reason: 'not-ours' });
-  assert.deepEqual(parseBackup(JSON.stringify({ app: 'booklet-studio', version: 99, shoes: [] })), { ok: false, reason: 'newer' });
+  assert.deepEqual(parseBackup(JSON.stringify({ app: 'booklet-studio', version: 99, items: [] })), { ok: false, reason: 'newer' });
+});
+
+t('stara sigurnosna kopija (verzija 1, „shoes") se i dalje čita; stavke dobivaju prazan opis', () => {
+  const old = JSON.stringify({ app: 'booklet-studio', version: 1, savedAt: 'x', shoes: [{ id: 'a', title: 'A', price: '฿1', images: [IMG] }], settings: {}, draft: {} });
+  const r = parseBackup(old);
+  assert.ok(r.ok);
+  if (r.ok) assert.deepEqual(r.items.map((i) => [i.id, i.title, i.desc]), [['a', 'A', '']]);
+});
+t('toBuildInput prenosi opis stavke', () => {
+  const items: Item[] = [{ id: 'a', title: 'A', price: '', desc: 'Handmade', images: [IMG] }];
+  const d = { ...defaultDraft('en'), pages: [{ id: 'p', type: 'shoes' as const, heading: '', shoeIds: ['a'], note: '' }] };
+  assert.equal(toBuildInput(d, items, defaultSettings()).shoes[0].desc, 'Handmade');
+});
+t('predložak „brodska tura": mjesto upisuje korisnik; prazno mjesto se izostavlja; th i en; nema hrvatskog', () => {
+  const en = boatTripPreset('en', 'Phuket');
+  assert.equal(en.steps.length, 3);
+  assert.ok(en.steps[1].desc.includes('(Phuket)') && en.waMessage.includes('Place: Phuket'));
+  const krabi = boatTripPreset('en', ' Krabi ');
+  assert.ok(krabi.waMessage.includes('Place: Krabi') && !JSON.stringify(krabi).includes('Phuket'));
+  const none = boatTripPreset('en', '');
+  assert.ok(!none.steps[1].desc.includes('()') && !/Place:/.test(none.waMessage));
+  const th = boatTripPreset('th', 'Phuket');
+  assert.ok(th.steps[1].desc.includes('(Phuket)') && th.waMessage.includes('Phuket'));
+  assert.ok(!/NARU|HRVATSKI|Ručno|kiše/i.test(JSON.stringify([en, th])));
 });
 
 if (failed) {
