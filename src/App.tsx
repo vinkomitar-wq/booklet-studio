@@ -24,6 +24,7 @@ import { renderFlyer } from './lib/flyerRender';
 import { FLYER_LAYOUTS, FLYER_SLOTS, Flyer, FlyerLayout, flyerIssues, flyerModel, newFlyer, normalizeFlyers, setLayout, toggleFlyerItem } from './lib/flyer';
 import { photoToDataUrl } from './lib/images';
 import { runShopImport } from './lib/shopImport';
+import { isFleetItem, isShopItem, runBoatImport } from './lib/boatImport';
 import { externalizePhotos, inlinePhotos, newPhotoId, photoSrc, usedPhotos, type StudioState } from './lib/sync';
 import { useCloudSync, type CloudInfo } from './useCloudSync';
 import { Settings, Item, boatTripPreset, defaultSettings, makeBackup, newId, normalizeSettings, normalizeItems, parseBackup, settingsIssues, toBuildInput, toContact } from './lib/studio';
@@ -173,6 +174,10 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const many = useRef<HTMLInputElement>(null);
+  const [source, setSource] = useState<'all' | 'shoes' | 'boats' | 'own'>('all');
+  const kinds = { shoes: items.some(isShopItem), boats: items.some(isFleetItem), own: items.some((i) => !i.shopId) };
+  const showChips = Object.values(kinds).filter(Boolean).length >= 2;
+  const shown = items.filter((i) => !showChips || source === 'all' || (source === 'shoes' ? isShopItem(i) : source === 'boats' ? isFleetItem(i) : !i.shopId));
 
   const addMany = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -207,6 +212,30 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
     }
     setBusy(false);
   };
+  // Uvoz brodova s thailandboattours.com: samo čita; slike idu kroz isto smanjivanje kao ručno dodane
+  const importBoats = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const cloud = await import('./lib/cloud');
+      const grab = async (url: string) => {
+        const r = await fetch(url, { mode: 'cors' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const b = await r.blob();
+        return photoToDataUrl(new File([b], 'boat.jpg', { type: b.type.startsWith('image/') ? b.type : 'image/jpeg' }));
+      };
+      const r = await runBoatImport(items, cloud.fetchFleet, grab, (taken) => newId(taken));
+      if (r.added.length > 0) setItems((s) => [...s, ...r.added.filter((a) => !s.some((x) => x.shopId && x.shopId === a.shopId))]);
+      const parts = [t('shopAdded', { n: r.added.length })];
+      if (r.already > 0) parts.push(t('shopAlready', { n: r.already }));
+      if (r.partial > 0) parts.push(t('boatPartial', { n: r.partial }));
+      if (r.noImage.length > 0) parts.push(t('boatNoImage', { names: r.noImage.slice(0, 6).join(', ') }));
+      setMsg({ text: r.total === 0 ? t('boatEmpty') : parts.join(' · '), ok: r.total > 0 && r.noImage.length === 0 && r.partial === 0 });
+    } catch (e: any) {
+      setMsg({ text: t('shopFail', { detail: String(e?.code || e?.message || e).slice(0, 120) }), ok: false });
+    }
+    setBusy(false);
+  };
   const remove = (id: string) => {
     if (confirm !== id) {
       setConfirm(id);
@@ -232,15 +261,25 @@ function ItemsTab({ t, items, setItems }: { t: TFn; items: Item[]; setItems: (f:
           <button type="button" className="btn" data-import-shop disabled={busy} onClick={() => void importShop()}>
             {busy ? t('building') : t('shopImport')}
           </button>
+          <button type="button" className="btn" data-import-boats disabled={busy} onClick={() => void importBoats()}>
+            {busy ? t('building') : t('boatImport')}
+          </button>
           <input ref={many} type="file" accept="image/*" multiple hidden data-many-input onChange={(e) => { void addMany(e.target.files); e.target.value = ''; }} />
         </div>
         {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
+        {showChips && (
+          <div className="seg" style={{ marginTop: 12 }} data-source-chips>
+            {(['all', 'shoes', 'boats', 'own'] as const).filter((k) => k === 'all' || kinds[k]).map((k) => (
+              <button key={k} type="button" data-source={k} aria-pressed={source === k} onClick={() => setSource(k)}>{t(k === 'all' ? 'srcAll' : k === 'shoes' ? 'srcShoes' : k === 'boats' ? 'srcBoats' : 'srcOwn')}</button>
+            ))}
+          </div>
+        )}
       </div>
       {items.length === 0 ? (
         <p className="empty" data-empty>{t('noItems')}</p>
       ) : (
         <div className="grid">
-          {items.map((s) => (
+          {shown.map((s) => (
             <div key={s.id} className="shoe" data-item={s.id}>
               <div className="ph">{s.images[0] ? <img src={s.images[0]} alt="" /> : t('noPhoto')}</div>
               <div className="meta">

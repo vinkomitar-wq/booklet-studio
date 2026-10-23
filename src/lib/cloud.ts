@@ -20,6 +20,9 @@ const DB_ID = 'ai-studio-phuketcustomkick-d24a7970-77d9-46a8-8f7d-6548ffc1c198';
 const app = initializeApp(CONFIG);
 const auth = getAuth(app);
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, DB_ID);
+// Baza aplikacije thailandboattours.com (isti projekt, druga imenovana baza): flota je javno čitljiva
+const PAYC_DB_ID = 'ai-studio-9ef1e50a-1195-4446-b8c2-518eefb30d2e';
+const paycDb = initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, PAYC_DB_ID);
 
 export interface CloudUser {
   uid: string;
@@ -54,4 +57,10 @@ export async function fetchShopImage(ref: string): Promise<string> {
   const snap = await getDoc(doc(db, 'shop_images', id));
   const data = snap.exists() ? snap.data().data : '';
   return typeof data === 'string' ? data : '';
+}
+
+/** Popis brodova flote thailandboattours.com (`fleet/vessels`, polje `list`); jedno čitanje. Bez dokumenta vraća undefined. */
+export async function fetchFleet(): Promise<unknown> {
+  const snap = await getDoc(doc(paycDb, 'fleet', 'vessels'));
+  return snap.exists() ? snap.data().list : undefined;
 }
