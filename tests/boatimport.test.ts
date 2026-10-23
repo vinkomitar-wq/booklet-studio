@@ -1,6 +1,6 @@
 // Uvoz brodova: čitanje flote, adrese slika, opis, bez imena operatora, djelomične slike, ponovni uvoz (lažni dohvat, bez mreže).
 import assert from 'node:assert/strict';
-import { boatDesc, isFleetItem, isShopItem, parseFleet, resolveBoatImage, runBoatImport } from '../src/lib/boatImport';
+import { boatDesc, isFleetItem, isShopItem, libraryPhotos, parseFleet, resolveBoatImage, runBoatImport } from '../src/lib/boatImport';
 import type { Item } from '../src/lib/studio';
 
 let failed = 0;
@@ -84,13 +84,53 @@ const nid = (taken: Set<string>) => {
     assert.equal(r2.partial, 1);
   });
 
-  await t('runBoatImport: ponovni uvoz ne dira uvezeno i ne dohvaća slike', async () => {
-    const first = await runBoatImport([], async () => fleet, fetchImage, nid);
+  await t('runBoatImport: ponovni uvoz — brod s 3 slike se uopće ne dohvaća, ostali se dopune samo ako ima više', async () => {
+    const full: Item = { id: 'f', title: 'Edited title', price: '฿5', desc: 'my words', images: [IMG('1'), IMG('2'), IMG('3')], shopId: 'fleet:the-best' };
     let calls = 0;
-    const again = await runBoatImport(first.added, async () => fleet, async (u) => (calls++, fetchImage(u)), nid);
+    const again = await runBoatImport([full], async () => [fleet[0]], async (u) => (calls++, fetchImage(u)), nid);
+    assert.equal(calls, 0, 'brod koji već ima 3 slike se ne dohvaća');
     assert.equal(again.added.length, 0);
-    assert.equal(again.already, first.added.length);
-    assert.equal(calls, 1, 'uvezeni brodovi se ne dohvaćaju ponovno; samo Namaste (blokiran) se pokušava opet');
+    assert.equal(again.already, 1);
+  });
+
+  await t('knjižnica slika: ostale fotografije broda se pridružuju, bez duplikata', () => {
+    const lib = [
+      { category: 'fleet', vesselId: 'the-best', url: '/fleet/the-best-hero.jpg' },
+      { category: 'fleet', vesselId: 'the-best', url: '/fleet/the-best-saloon.jpg' },
+      { category: 'destination', vesselId: 'the-best', url: '/x.jpg' },
+      { category: 'fleet', vesselId: 'other', url: '/y.jpg' },
+      { category: 'fleet', url: '/nobody.jpg' },
+      null,
+    ];
+    assert.deepEqual([...libraryPhotos(lib).keys()], ['the-best', 'other']);
+    const best = parseFleet(fleet, lib).find((b) => b.id === 'the-best')!;
+    assert.deepEqual(best.images, ['/fleet/the-best-hero.jpg', '/fleet/the-best-bay.jpg', '/fleet/the-best-saloon.jpg']);
+  });
+
+  await t('runBoatImport: brod s jednom slikom se dopuni iz knjižnice; naslov i opis koje je korisnik uredio ostaju', async () => {
+    const one: Item = { id: 'o', title: 'My name for it', price: '฿9', desc: 'my words', images: [IMG('H')], shopId: 'fleet:the-best' };
+    const lib = [{ category: 'fleet', vesselId: 'the-best', url: '/fleet/the-best-bay.jpg' }];
+    const r = await runBoatImport([one], async () => [fleet[0]], fetchImage, nid, async () => lib);
+    assert.equal(r.updated, 1);
+    assert.equal(r.added.length, 1);
+    const upd = r.added[0];
+    assert.equal(upd.id, 'o', 'isti id: zamjenjuje, ne dodaje drugu stavku');
+    assert.equal(upd.title, 'My name for it');
+    assert.equal(upd.desc, 'my words');
+    assert.equal(upd.images.length, 2);
+  });
+
+  await t('runBoatImport: dopuna koja ne donosi više slika ne mijenja ništa', async () => {
+    const one: Item = { id: 'o', title: 'T', price: '', desc: '', images: [IMG('H')], shopId: 'fleet:namaste' };
+    const r = await runBoatImport([one], async () => [fleet[1]], fetchImage, nid);
+    assert.equal(r.added.length, 0);
+    assert.equal(r.updated, 0);
+  });
+
+  await t('runBoatImport: pad knjižnice slika ne ruši uvoz', async () => {
+    const r = await runBoatImport([], async () => [fleet[0]], fetchImage, nid, async () => { throw new Error('lib down'); });
+    assert.equal(r.added.length, 1);
+    assert.equal(r.added[0].images.length, 2);
   });
 
   await t('runBoatImport: cipele (shopId bez prefiksa) i ručne stavke ne smetaju', async () => {

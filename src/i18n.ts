@@ -162,6 +162,7 @@ const T = {
   shopEmpty: { th: 'ไม่พบรองเท้าในร้านออนไลน์', en: 'No shoes found in the web store.' },
   shopFail: { th: 'นำเข้าไม่สำเร็จ: {detail} ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง', en: 'Import did not work: {detail}. Check your internet and try again.' },
   boatImport: { th: 'นำเข้าเรือจาก thailandboattours.com', en: 'Import boats from thailandboattours.com' },
+  boatUpdated: { th: 'เพิ่มรูปให้เรือ {n} ลำ', en: 'Added photos to {n} boat(s)' },
   boatPartial: { th: 'เรือ {n} ลำโหลดรูปไม่ครบ (เว็บไซต์ไม่อนุญาตบางรูป)', en: '{n} boat(s) imported with fewer photos (the site did not allow some)' },
   boatNoImage: { th: 'ข้าม (ไม่มีรูปที่ใช้ได้): {names}', en: 'Skipped (no usable photo): {names}' },
   boatEmpty: { th: 'ไม่พบเรือในฐานข้อมูล', en: 'No boats found in the fleet database.' },
