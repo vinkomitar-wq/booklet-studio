@@ -153,45 +153,52 @@ t('engleski: oznake', () => {
   const html = buildBookletHtml(input({ lang: 'en' }));
   assert.ok(html.includes('data-next="Next"') && html.includes('data-restart="Back to start"') && html.includes('How to order'));
 });
-t('zadnja stranica: narudžba u web trgovini je GLAVNA, na brodu samo uz pred-narudžbu (datum, brod, mjesto)', () => {
-  const last = bookletPages(input()).at(-1)!;
-  assert.ok(last.includes('pk-online-main') && last.includes('Order on our web store') && last.includes('href="https://shop.example.com/"'));
-  assert.ok(last.indexOf('pk-online-main') < last.indexOf('Pre-order'), 'web trgovina dolazi prva');
-  assert.ok(last.includes('Limited stock on board') && last.includes('pre-order only'));
-  assert.ok(last.includes('Tell us the date, boat and place') && last.includes('(Phuket)'), 'mjesto zasad Phuket');
-  assert.ok(!/crew carry sizes|upper deck|How to buy/i.test(last), 'bez tvrdnje da posada nosi sve brojeve');
-  assert.ok(!/NARU|HRVATSKI|NAPOMENA|Ručno|kiše/i.test(last), 'nema hrvatskog');
-  for (const lang of ['th', 'en'] as const) {
-    const h = bookletPages({ ...input({ lang }) }).at(-1)!;
-    assert.ok(h.includes('pk-online-main') && h.includes('pk-step-last') && (h.match(/<li class="pk-step/g) ?? []).length === 3);
-  }
-  const own = bookletPages(input({ orderNote: 'Ship in 7 days' })).at(-1)!;
-  assert.ok(own.includes('Ship in 7 days') && own.includes('Tell us the date'), 'vlastiti tekst dolazi uz korake, ne umjesto njih');
+t('zadnja stranica: naslov, web kartica i koraci dolaze iz nacrta; ništa o cipelama ni brodovima u zadanom', () => {
+  const plain = bookletPages(input()).at(-1)!;
+  assert.ok(plain.includes('How to order') && plain.includes('pk-online-main') && plain.includes('href="https://shop.example.com/"'));
+  assert.ok(!plain.includes('pk-step') && !plain.includes('pk-pill'), 'bez koraka kad ih korisnik nije upisao');
+  assert.ok(!/shoe|boat|Phuket|hand-painted/i.test(plain), 'zadano je opće');
+  const d = input({
+    orderHeading: 'Pre-order',
+    stepsTitle: 'On a boat trip?',
+    stepsBadge: 'Limited stock',
+    steps: [
+      { title: 'Choose', desc: 'on the web store' },
+      { title: 'Tell us the date', desc: '' },
+      { title: 'Pay on board', desc: 'cash or QR' },
+    ],
+    orderNote: 'Ship in 7 days',
+  });
+  const last = bookletPages(d).at(-1)!;
+  assert.ok(last.includes('>Pre-order<') && last.includes('On a boat trip?') && last.includes('Limited stock'));
+  assert.equal((last.match(/<li class="pk-step/g) ?? []).length, 3);
+  assert.ok(last.includes('pk-step-last') && last.includes('Ship in 7 days'));
+  assert.ok(last.indexOf('pk-online-main') < last.indexOf('pk-steps'), 'web kartica dolazi prije koraka');
 });
-t('pred-narudžba: WhatsApp poruka traži dizajn, broj, datum, brod i nosi mjesto; mjesto se mijenja ili izostavlja', () => {
-  const wa = (draft: Partial<BookletDraft>) => decodeURIComponent((bookletPages(input(draft)).at(-1)!.match(/wa\.me\/66945411179\?text=([^"]+)"[^>]*><b>Pre-order/) ?? [])[1] ?? '');
-  const m = wa({});
-  assert.ok(/Design:/.test(m) && /Size:/.test(m) && /Date:/.test(m) && /Boat name:/.test(m) && /Place: Phuket/.test(m));
-  const k = wa({ boatPlace: 'Krabi' });
-  assert.ok(/Place: Krabi/.test(k) && !/Phuket/.test(k));
-  assert.ok(!bookletPages(input({ boatPlace: 'Krabi' })).at(-1)!.includes('Phuket'));
-  const none = bookletPages(input({ boatPlace: '' })).at(-1)!;
-  assert.ok(!none.includes('()') && !/Place:/.test(wa({ boatPlace: '' })), 'bez mjesta nema praznih zagrada ni praznog retka');
+t('koraci: prazni se odbacuju, najviše 6, duljine ograničene', () => {
+  const d = normalizeDraft({ steps: [{ title: '', desc: '' }, ...Array.from({ length: 9 }, (_, i) => ({ title: `S${i}`, desc: 'x'.repeat(500) })), 'junk', null] }, 'en');
+  assert.equal(d.steps.length, 6);
+  assert.ok(d.steps.every((st) => st.desc.length === 300));
+  assert.deepEqual(normalizeDraft({ steps: 'nope' }, 'en').steps, []);
 });
-t('normalizeDraft: boatPlace zadano Phuket, upisano se čuva, prazno ostaje prazno', () => {
-  assert.equal(normalizeDraft({}, 'en').boatPlace, 'Phuket');
-  assert.equal(normalizeDraft({ boatPlace: ' Krabi ' }, 'en').boatPlace, 'Krabi');
-  assert.equal(normalizeDraft({ boatPlace: '' }, 'en').boatPlace, '');
-  assert.equal(normalizeDraft({ boatPlace: 'x'.repeat(200) }, 'en').boatPlace.length, 60);
+t('WhatsApp: vlastita poruka iz nacrta, inače zadani pozdrav; kodira se za adresu', () => {
+  const msg = (draft: Partial<BookletDraft>) => decodeURIComponent((bookletPages(input(draft)).at(-1)!.match(/wa\.me\/66945411179\?text=([^"]+)"/) ?? [])[1] ?? '');
+  assert.equal(msg({}), 'Hi! I saw your booklet and I am interested.');
+  assert.equal(msg({ waMessage: 'Pre-order!\nDesign: \nDate: ' }), 'Pre-order!\nDesign: \nDate:', 'završni razmak se skida, unutarnji ostaju');
 });
-t('zadnja stranica: bez adrese trgovine nema web kartice, bez WhatsAppa nema pred-narudžbe', () => {
+t('zadnja stranica: bez adrese nema web kartice, bez ijednog kontakta nema ni naslova kontakta', () => {
   const a = bookletPages(input({}, { contact: { ...contact, shopUrl: '' } })).at(-1)!;
-  assert.ok(!a.includes('pk-online-main') && a.includes('Pre-order'));
-  const b = bookletPages(input({}, { contact: { ...contact, whatsappE164: '' } })).at(-1)!;
-  assert.ok(!b.includes('Pre-order on WhatsApp') && b.includes('pk-online-main'));
+  assert.ok(!a.includes('pk-online-main') && a.includes('Contact us'));
+  const bare = { ...contact, shopUrl: '', whatsappE164: '', phoneE164: '', phoneDisplay: '', lineUrl: '', lineDisplay: '', email: '', ownerName: '' };
+  const b = bookletPages(input({}, { contact: bare })).at(-1)!;
+  assert.ok(!b.includes('Contact us') && !b.includes('pk-link'), 'prazno se ne ispisuje');
 });
-
-// ---- Kontakt: samo ono što trgovina ima ----
+t('opis stavke: ispisuje se uz naziv i cijenu, escapean; prazan se ne piše', () => {
+  const withDesc = { ...shoes[0], desc: 'Hand <b>made</b>' };
+  const html = bookletPages({ ...input(), shoes: [withDesc, shoes[1]] })[1];
+  assert.ok(html.includes('pk-d') && html.includes('Hand &lt;b&gt;made&lt;/b&gt;'));
+  assert.equal((html.match(/class="pk-d"/g) ?? []).length, 1);
+});
 t('kontakt: WhatsApp s unaprijed upisanom porukom, LINE, telefon, e-pošta, web', () => {
   const last = bookletPages(input()).at(-1)!;
   assert.ok(last.includes('https://wa.me/66945411179?text=Hi!%20I%20saw'));

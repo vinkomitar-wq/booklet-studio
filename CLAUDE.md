@@ -9,7 +9,8 @@ Odgovaraj **hrvatski, koncizno**. Vlasnik (Vinko) nije tehnički: objašnjavaj j
 
 ## Pravila
 - **Sve što korisnik vidi: tajlandski i engleski** (`src/i18n.ts`, `LABELS` u `src/lib/booklet.ts`). Nikad hrvatski. Komentari u kodu su hrvatski.
-- `src/lib/booklet.ts` je **ista datoteka** kao u `parry-shoe-shop` (čista, bez ovisnosti). Mijenja li se pravilo knjižice, mijenja se u oba repoa.
+- `src/lib/booklet.ts` je čista (bez ovisnosti) i **glavna kopija je OVDJE**. Trgovina `parry-shoe-shop` ima stariju, specijaliziranu kopiju za cipele; one se više ne usklađuju. U kodu se stavke još zovu shoe (povijest); korisnik to nikad ne vidi.
+- Aplikacija je **opća** (proizvodi, usluge, ponude), ne samo cipele i brodske ture. Nikakav tekst o cipelama, brodovima ili Phuketu ne smije biti u zadanim vrijednostima; takvi tekstovi su samo **predlošci** koje korisnik sam uključi i uređuje (`boatTripPreset` u `studio.ts`).
 - Kontakt se ne pogađa: telefon samo u međunarodnom obliku (`toE164`); broj s nulom na početku se odbija i to se piše na ekranu.
 - Tihi `catch` je zabranjen: svaka radnja javlja uspjeh i grešku na ekranu.
 - Provjera prije commita: `npm test && npx tsc --noEmit && npm run build`.
