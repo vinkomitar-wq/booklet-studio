@@ -127,6 +127,19 @@ const nid = (taken: Set<string>) => {
     assert.equal(r.updated, 0);
   });
 
+  await t('thin: javlja koliko je slika baza navela i koliko ih je blokirano (zašto brod ima manje od 3)', async () => {
+    const boats = [
+      { id: 'one', name: 'One', images: ['/fleet/the-best-hero.jpg'] },
+      { id: 'blk', name: 'Blk', images: ['/fleet/the-best-hero.jpg', 'https://blocked.example/a.jpg', 'https://blocked.example/b.jpg'] },
+      { id: 'three', name: 'Three', images: ['/fleet/the-best-hero.jpg', '/fleet/the-best-bay.jpg', '/fleet/s.jpg'] },
+    ];
+    const r = await runBoatImport([], async () => boats, fetchImage, nid);
+    assert.deepEqual(r.thin.sort((a, b) => a.name.localeCompare(b.name)), [
+      { name: 'Blk', found: 3, blocked: 2 },
+      { name: 'One', found: 1, blocked: 0 },
+    ]);
+  });
+
   await t('runBoatImport: pad knjižnice slika ne ruši uvoz', async () => {
     const r = await runBoatImport([], async () => [fleet[0]], fetchImage, nid, async () => { throw new Error('lib down'); });
     assert.equal(r.added.length, 1);

@@ -79,6 +79,8 @@ export interface BoatImportResult {
   already: number;
   /** Već uvezeni brodovi kojima su dodane slike (imali su ih manje od 3, a sada ih ima više). */
   updated: number;
+  /** Brodovi koji i nakon uvoza imaju manje od 3 slike: koliko je slika baza uopće navela i koliko ih se nije dalo dohvatiti. Služi da se vidi ZAŠTO. */
+  thin: { name: string; found: number; blocked: number }[];
   /** Brodovi bez ijedne upotrebljive slike (imena, da se zna koje dodati ručno). */
   noImage: string[];
   /** Uvezeni brodovi kojima se neka slika nije dala dohvatiti (npr. stranica ne dopušta). */
@@ -114,27 +116,31 @@ export async function runBoatImport(
     const have = byFleetId.get(FLEET_PREFIX + b.id);
     return !have || have.images.length < MAX_PER_BOAT;
   });
-  const res: BoatImportResult = { added: [], total: boats.length, already: 0, updated: 0, noImage: [], partial: 0 };
-  const got = new Map<string, { imgs: string[]; failed: boolean }>();
+  const res: BoatImportResult = { added: [], total: boats.length, already: 0, updated: 0, thin: [], noImage: [], partial: 0 };
+  const got = new Map<string, { imgs: string[]; failed: boolean; sources: number; blocked: number }>();
   let next = 0;
   const worker = async () => {
     while (next < work.length) {
       const b = work[next++];
       const imgs: string[] = [];
       let failed = false;
-      for (const raw of b.images.slice(0, 12)) {
+      let blocked = 0;
+      const sources = b.images.map(resolveBoatImage).filter(Boolean);
+      for (const url of sources.slice(0, 12)) {
         if (imgs.length >= MAX_PER_BOAT) break;
-        const url = resolveBoatImage(raw);
-        if (!url) continue;
         try {
           const d = await fetchImage(url);
           if (d.startsWith('data:image/')) imgs.push(d);
-          else failed = true;
+          else {
+            failed = true;
+            blocked++;
+          }
         } catch {
           failed = true;
+          blocked++;
         }
       }
-      got.set(b.id, { imgs, failed });
+      got.set(b.id, { imgs, failed, sources: sources.length, blocked });
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
@@ -144,6 +150,8 @@ export async function runBoatImport(
     const g = got.get(b.id);
     const images = g ? pickImages(g.imgs) : [];
     const have = byFleetId.get(FLEET_PREFIX + b.id);
+    const finalCount = Math.max(images.length, have?.images.length ?? 0);
+    if (finalCount < MAX_PER_BOAT && g) res.thin.push({ name: b.name || b.id, found: g.sources, blocked: g.blocked });
     if (have) {
       if (images.length > have.images.length) {
         res.updated++;
